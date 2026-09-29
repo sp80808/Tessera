@@ -270,3 +270,58 @@ Future research agents should inspect architecture, activity, license and actual
 ## Hugging Face connector status
 
 The 2026-09-29 environment exposed Hugging Face search actions in connector metadata, but calls to paper/model/space search returned a runtime "tool not found" error. Existing Hugging Face paper links above remain useful navigational references, but no claim in this research pass should be described as having been validated through the live HF search connector.
+
+
+## Context engineering and AI-native language precedents
+
+### Context Engineering for AI Agents in Open-Source Software — 2025
+
+Seyedmoein Mohsenimofidi, Matthias Galster, Christoph Treude, Sebastian Baltes.
+
+Why it matters: studies agent-context/configuration files across 466 open-source projects and reports substantial variation in descriptive, prescriptive, prohibitive, explanatory and conditional information. Tessera's Context Lattice is a proposal to make those context classes scoped, typed, queryable and freshness-aware rather than relying only on free-form prompt files.
+
+- https://arxiv.org/abs/2510.21413
+
+### toke — AI-oriented compiled language
+
+toke is an independent compiled-language project explicitly optimized for LLM code generation. Its current documentation emphasizes a small grammar, one canonical form, structured diagnostics and measured token/model gates. Importantly, the project also documents negative/superseded measurements and a corrected Pass@1 denominator, which is a good precedent for Tessera's evidence discipline.
+
+Useful Tessera comparisons:
+- canonical-form grammar and bounded parsing;
+- native compilation;
+- tokenizer benchmark methodology;
+- structured repair-loop diagnostics;
+- source/documentation separation.
+
+Do **not** copy its self-reported token reductions into Tessera claims; reproduce equivalent measurements independently.
+
+- https://tokelang.dev/
+- https://tokelang.dev/docs/learn/01-why-toke
+- tokenizer artifact: https://huggingface.co/karwalski/toke-tokenizer
+
+### ION — token-efficient AI-native transpiled language
+
+ION describes itself as a token-efficient AI-native programming language compiling to JavaScript, TypeScript and Python. It is especially useful as a contrast case because Tessera targets low-level native systems semantics rather than a compact transpilation surface.
+
+- https://github.com/robertkarlsson2-design/ION
+
+### Qwen3-Coder — long-context agentic code-model target
+
+Qwen's current Hugging Face model cards describe Qwen3-Coder variants as agentic coding models with 256K native context (with larger extended-context configurations). Tessera should include at least one Qwen3-Coder tokenizer/model in the harness benchmark portfolio, while still testing whether graph retrieval beats indiscriminate long-context stuffing.
+
+- https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct
+
+## Research principle added from comparable projects
+
+End-to-end agent efficiency should be measured as more than source tokens. A useful experimental decomposition is:
+
+```
+cost(task) =
+  input_tokens
+  + output_tokens
+  + repair_tokens
+  + retrieved_context_tokens
+  + verification_cost
+```
+
+and quality must be tracked simultaneously. A language that saves 30% source tokens but causes substantially more repair turns is not a successful LLM-native language.
