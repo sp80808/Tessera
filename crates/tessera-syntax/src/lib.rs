@@ -532,7 +532,10 @@ mod tests {
     fn errors_name_offset_and_cause() {
         assert!(matches!(fmt(""), Err(SyntaxError::EmptyProgram)));
         // `fmt` is surface normalization only; name resolution happens on expand.
-        assert_eq!(fmt("f add(a:i64)>i64=b").as_deref(), Ok("f add(a:i64)>i64=b"));
+        assert_eq!(
+            fmt("f add(a:i64)>i64=b").as_deref(),
+            Ok("f add(a:i64)>i64=b")
+        );
         assert!(matches!(
             expand("f add(a:i64)>i64=b"),
             Err(SyntaxError::UnboundVar { .. })
