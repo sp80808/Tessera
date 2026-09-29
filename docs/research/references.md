@@ -325,3 +325,92 @@ cost(task) =
 ```
 
 and quality must be tracked simultaneously. A language that saves 30% source tokens but causes substantially more repair turns is not a successful LLM-native language.
+
+
+## Research pass 2 additions — 2026-09-29
+
+### ShortCoder — 2026
+
+Sicong Liu et al. *ShortCoder: Knowledge-Augmented Syntax Optimization for Token-Efficient Code Generation*. arXiv:2601.09703.
+
+Why it matters: reports AST-preserving syntax simplification and token-efficiency experiments, providing a direct precedent for compiler-validated concision rather than character-level minification.
+
+- https://arxiv.org/abs/2601.09703
+- code/data: https://github.com/DeepSoftwareAnalytics/ShorterCode
+
+### Token Sugar — 2025/2026 preprint
+
+*Token Sugar: Making Source Code Sweeter for LLMs through Token-Efficient Shorthand*. arXiv:2512.08266.
+
+Why it matters: mines frequent code patterns and replaces them with deterministic reversible shorthand, motivating Tessera Model Transport as a separate layer from canonical TC.
+
+- https://arxiv.org/abs/2512.08266
+
+### CodePromptZip — 2025
+
+*CODEPROMPTZIP: Code-specific Prompt Compression for Retrieval-Augmented Generation in Coding Tasks with LMs*. arXiv:2502.14925.
+
+Why it matters: uses program-analysis-aware compression for retrieved code, reinforcing task-specific compiler-mediated context packing.
+
+- https://arxiv.org/abs/2502.14925
+
+### XGrammar — 2024/2025
+
+Yixin Dong et al. *XGrammar: Flexible and Efficient Structured Generation Engine for Large Language Models*. arXiv:2411.15100.
+
+Why it matters: grammar-constrained structured generation with precomputation/co-design suggests an optional tokenizer-to-Tessera-parser generation bridge.
+
+- https://arxiv.org/abs/2411.15100
+
+### TreeCoder — PLDI 2026
+
+*TreeCoder: Systematic Exploration and Optimisation of Decoding and Constraints for LLM Code Generation*. arXiv:2511.22277.
+
+Why it matters: treats constrained code generation as parser-aware tree search and supports benchmarking grammar constraints as part of the coding stack.
+
+- https://arxiv.org/abs/2511.22277
+
+### Context as a Tool — Findings ACL 2026
+
+*Context as a Tool: Context Management for Long-Horizon SWE-Agents*. arXiv:2512.22087.
+
+Why it matters: makes context maintenance an explicit callable capability with stable semantics, long-term condensed memory and short-term working context. This motivates an active TCG workspace rather than passive append-only context.
+
+- https://arxiv.org/abs/2512.22087
+
+### RepoMirage / RepoAnchor — 2026
+
+Hanyu Li et al. *RepoMirage: Probing Repository Context Reasoning in Code Agents with Perturbations*. arXiv:2605.26177.
+
+Why it matters: reports substantial degradation when tasks require explicit multi-file structural reasoning and identifies exploration drift; structure-first hints and RepoAnchor support pre-composed TCG structural scaffolds.
+
+- https://arxiv.org/abs/2605.26177
+
+### From Linearity to Borrowing — 2025
+
+Andrew Wagner, Olek Gierczak, Brianna Marshall, John M. Li, Amal Ahmed. *From Linearity to Borrowing*. DOI:10.1145/3764117.
+
+Why it matters: develops borrowing incrementally from a linear core through immutable borrows, lexical lifetimes, reborrowing and mutable borrows, with semantic soundness and memory-reclamation results. Strong candidate ordering for Tessera v0 semantics.
+
+- https://doi.org/10.1145/3764117
+
+### Place Capability Graphs — 2025
+
+*Place Capability Graphs: A General-Purpose Model of Rust's Ownership and Borrowing Guarantees*. arXiv:2503.21691.
+
+Why it matters: graph representation of flow-sensitive Rust ownership/borrowing capabilities motivates TCap as a compact derived semantic/diagnostic view.
+
+- https://arxiv.org/abs/2503.21691
+
+### Salsa / rustc incremental queries
+
+Current Salsa documentation and the Rust Compiler Development Guide describe deterministic tracked queries, dependency recording, memoization and red/green-style invalidation.
+
+Why it matters: Tessera can share one incremental dependency substrate between compiler semantics and TCG/evidence invalidation.
+
+- https://salsa-rs.github.io/salsa/
+- https://rustc-dev-guide.rust-lang.org/queries/incremental-compilation-in-detail.html
+
+### Connector status for pass 2
+
+Exa reviewed 32 search results across four workstreams. Parallel Search, SciSpace, Firecrawl research/developer indexes and Context7 contributed additional primary/technical evidence. Scite and Consensus were invoked but remained at their monthly connected-account limits until 2026-10-01; no pass-2 claims are attributed to them.
