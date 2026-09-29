@@ -16,6 +16,8 @@ Tessera separates concerns that conventional languages force into one representa
 | **TCG — Tessera Context Graph** | repository/build/operational/knowledge graph used by harnesses |
 | **CTX / Context Lattice** | typed, scoped and condition-aware metadata attached to code/project entities |
 | **Verification Ledger** | provenance, freshness, confidence and invalidation state for contextual claims |
+| **TMT — Tessera Model Transport** | reversible model/task-specific packing derived from TC/TIR |
+| **TCap — Capability Graph** | flow-sensitive ownership/borrow capability view derived from TIR |
 
 The executable meaning of ordinary Tessera code must never require an LLM or live network lookup.
 
@@ -39,6 +41,10 @@ The executable meaning of ordinary Tessera code must never require an LLM or liv
 - [Semantic core and memory-safety direction](semantic-core.md)
 - [Compiler and runtime architecture](compiler-architecture.md)
 - [Benchmark methodology](benchmarks.md)
+- [Incremental semantic query-engine architecture](../architecture/incremental-query-engine.md)
+- [Model transport proposal](../spec/model-transport.md)
+- [Ownership capability graph proposal](../spec/ownership-capability-graph.md)
+- [Research pass 2 synthesis](2026-09-29-pass2.md)
 
 ### Context-native agent architecture
 - [Context Graph and autonomous harness](context-graph-harness.md)
@@ -121,5 +127,10 @@ local source/spec
 5. Build graph-packet retrieval under explicit token budgets.
 6. Lower a safe-core subset through Cranelift and compare generated runtime/compile performance.
 7. Evaluate TC-only vs TC+TIR vs TC+TCG packets on generation and debugging tasks.
+8. Prototype TMT symbol/type interning and reversible pattern sugar separately from TC grammar.
+9. Use one incremental query database for compiler results and context invalidation.
+10. Prototype TCap graph-native ownership diagnostics.
+11. Benchmark structure-first/active context against static AGENTS files and flat retrieval.
+12. Test optional grammar-constrained TC generation before attempting semantic constrained decoding.
 
 Syntax examples remain provisional until those experiments produce evidence.
