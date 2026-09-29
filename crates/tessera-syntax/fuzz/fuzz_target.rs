@@ -8,7 +8,7 @@
 
 use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
-use tessera_syntax::{fmt, parse, AstExpr, AstFunction, AstParam, TirType};
+use tessera_syntax::{fmt, parse, format_tc, format_expr, expand, AstExpr, AstFunction, AstParam, TirType};
 
 /// Arbitrary TC-like source generator using structured approach
 #[derive(Debug, Clone)]
@@ -41,7 +41,7 @@ fn generate_valid_function(u: &mut Unstructured<'_>) -> arbitrary::Result<String
     }
     let ret = "i64";
     let body = generate_expr(u, &params.iter().map(|s| s.split(':').next().unwrap().to_string()).collect::<Vec<_>>())?;
-    Ok(format!("f {}({}>)={}", name, params.join(","), ret, body))
+    Ok(format!("f {}({}>{})={}", name, params.join(","), ret, body))
 }
 
 fn generate_invalid_function(u: &mut Unstructured<'_>) -> arbitrary::Result<String> {
@@ -176,7 +176,7 @@ fuzz_target!(|data: TcSource| {
     // Just exercise all error paths
     let _ = parse(&data.source);
     let _ = fmt(&data.source);
-    let _ = tessera_syntax::expand(&data.source);
+    let _ = expand(&data.source);
 });
 
 /// Direct test of AstExpr generation and formatting
@@ -203,7 +203,7 @@ impl FuzzExpr {
 fuzz_target!(|expr: FuzzExpr| {
     let params = vec!["a".to_string(), "b".to_string(), "c".to_string()];
     let ast = expr.to_ast(&params);
-    let formatted = tessera_syntax::format_expr(&ast);
+    let formatted = format_expr(&ast);
     // Should not panic
     let _ = formatted;
 });
@@ -232,20 +232,11 @@ impl FuzzFunction {
 
 fuzz_target!(|func: FuzzFunction| {
     if let Some(ast) = func.to_ast() {
-        let formatted = tessera_syntax::format_tc(&ast);
+        let formatted = format_tc(&ast);
         // Round-trip
         if let Ok(parsed) = parse(&formatted) {
-            let reformatted = tessera_syntax::format_tc(&parsed);
+            let reformatted = format_tc(&parsed);
             assert_eq!(formatted, reformatted);
         }
     }
 });
-
-/// Format expression helper (from lib.rs)
-fn format_expr(expr: &AstExpr) -> String {
-    match expr {
-        AstExpr::Int(value) => value.to_string(),
-        AstExpr::Var(name) => name.clone(),
-        AstExpr::Add(lhs, rhs) => format!("{}+{}", format_expr(lhs), format_expr(rhs)),
-    }
-}

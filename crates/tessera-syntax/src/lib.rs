@@ -16,7 +16,9 @@
 
 use std::fmt;
 
-use tessera_tir::{TirExpr, TirFunction, TirParam, TirType};
+use tessera_tir::{TirExpr, TirFunction, TirParam};
+
+pub use tessera_tir::TirType;
 
 // ---------- tokens ----------
 
@@ -398,7 +400,8 @@ pub fn to_tir(func: &AstFunction) -> Result<TirFunction, SyntaxError> {
 
 // ---------- canonical formatting (exactly one spelling) ----------
 
-fn format_expr(expr: &AstExpr) -> String {
+#[must_use]
+pub fn format_expr(expr: &AstExpr) -> String {
     match expr {
         AstExpr::Int(value) => value.to_string(),
         AstExpr::Var(name) => name.clone(),

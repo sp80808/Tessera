@@ -14,10 +14,10 @@ fn bench_parse(c: &mut Criterion) {
     let very_large_fn = format!("f huge({very_large_fn})>i64={}", (0..50).map(|i| format!("p{i}")).collect::<Vec<_>>().join("+"));
 
     let inputs = [
-        ("small", small_fn),
-        ("medium", medium_fn.as_str()),
-        ("large", large_fn.as_str()),
-        ("very_large", very_large_fn.as_str()),
+        ("small", small_fn as &str),
+        ("medium", &medium_fn[..]),
+        ("large", &large_fn[..]),
+        ("very_large", &very_large_fn[..]),
     ];
 
     for (name, src) in inputs {
@@ -48,10 +48,10 @@ fn bench_fmt(c: &mut Criterion) {
     let very_large_fn = format!("f huge({very_large_fn})>i64={}", (0..50).map(|i| format!("p{i}")).collect::<Vec<_>>().join("+"));
 
     let inputs = [
-        ("small", small_fn),
-        ("medium", medium_fn.as_str()),
-        ("large", large_fn.as_str()),
-        ("very_large", very_large_fn.as_str()),
+        ("small", small_fn as &str),
+        ("medium", &medium_fn[..]),
+        ("large", &large_fn[..]),
+        ("very_large", &very_large_fn[..]),
     ];
 
     for (name, src) in inputs {
@@ -82,10 +82,10 @@ fn bench_expand(c: &mut Criterion) {
     let very_large_fn = format!("f huge({very_large_fn})>i64={}", (0..50).map(|i| format!("p{i}")).collect::<Vec<_>>().join("+"));
 
     let inputs = [
-        ("small", small_fn),
-        ("medium", medium_fn.as_str()),
-        ("large", large_fn.as_str()),
-        ("very_large", very_large_fn.as_str()),
+        ("small", small_fn as &str),
+        ("medium", &medium_fn[..]),
+        ("large", &large_fn[..]),
+        ("very_large", &very_large_fn[..]),
     ];
 
     for (name, src) in inputs {
@@ -116,10 +116,10 @@ fn bench_roundtrip(c: &mut Criterion) {
     let very_large_fn = format!("f huge({very_large_fn})>i64={}", (0..50).map(|i| format!("p{i}")).collect::<Vec<_>>().join("+"));
 
     let inputs = [
-        ("small", small_fn),
-        ("medium", medium_fn.as_str()),
-        ("large", large_fn.as_str()),
-        ("very_large", very_large_fn.as_str()),
+        ("small", small_fn as &str),
+        ("medium", &medium_fn[..]),
+        ("large", &large_fn[..]),
+        ("very_large", &very_large_fn[..]),
     ];
 
     for (name, src) in inputs {
@@ -150,9 +150,9 @@ fn bench_fmt_idempotent(c: &mut Criterion) {
     let large_fn = "f big(a:i64,b:i64,c:i64,d:i64,e:i64,f:i64,g:i64,h:i64,i:i64,j:i64)>i64=a+b+c+d+e+f+g+h+i+j";
 
     let inputs = [
-        ("small", small_fn),
-        ("medium", medium_fn.as_str()),
-        ("large", large_fn.as_str()),
+        ("small", small_fn as &str),
+        ("medium", &medium_fn[..]),
+        ("large", &large_fn[..]),
     ];
 
     for (name, src) in inputs {
@@ -177,9 +177,9 @@ fn bench_token_count(c: &mut Criterion) {
     let large_fn = "f big(a:i64,b:i64,c:i64,d:i64,e:i64,f:i64,g:i64,h:i64,i:i64,j:i64)>i64=a+b+c+d+e+f+g+h+i+j";
 
     let inputs = [
-        ("small", small_fn),
-        ("medium", medium_fn.as_str()),
-        ("large", large_fn.as_str()),
+        ("small", small_fn as &str),
+        ("medium", &medium_fn[..]),
+        ("large", &large_fn[..]),
     ];
 
     for (name, src) in inputs {

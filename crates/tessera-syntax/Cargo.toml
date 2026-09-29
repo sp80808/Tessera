@@ -10,5 +10,12 @@ rust-version.workspace = true
 name = "tessera_syntax"
 path = "src/lib.rs"
 
+[[bench]]
+name = "tessera_syntax_bench"
+harness = false
+
 [dependencies]
 tessera-tir = { path = "../tessera-tir" }
+
+[dev-dependencies]
+criterion = { workspace = true }

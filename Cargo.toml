@@ -4,7 +4,6 @@ members = [
     "crates/tessera-syntax",
     "crates/tessera-tir",
     "crates/tessera-cli",
-    "crates/tessera-syntax/fuzz",
 ]
 resolver = "3"
 

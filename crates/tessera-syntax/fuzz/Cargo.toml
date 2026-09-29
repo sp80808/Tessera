@@ -7,6 +7,9 @@ repository.workspace = true
 rust-version.workspace = true
 publish = false
 
+[package.metadata]
+cargo-fuzz = true
+
 [[bin]]
 name = "fuzz_target"
 path = "fuzz_target.rs"
@@ -14,4 +17,4 @@ path = "fuzz_target.rs"
 [dependencies]
 tessera-syntax = { path = ".." }
 arbitrary = { version = "1.3", features = ["derive"] }
-libfuzzer-sys = "0.4"
+libfuzzer-sys = { version = "0.4", features = ["link_libfuzzer"] }
