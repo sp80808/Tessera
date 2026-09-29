@@ -150,3 +150,60 @@ Before freezing v0 grammar, create equivalent micro-programs in:
 - Odin.
 
 Measure both code-only and code+diagnostics token cost. A language that is cheap to write but expensive to explain may still be a poor agent language.
+
+
+## 2026 additions: tokenizer design is part of the language contract
+
+### Source-Attributed BPE (SA-BPE)
+
+Chizhov, Bogomolov & Yamshchikov, *From Where Words Come: Efficient Regularization of Code Tokenizers Through Source Attribution* (ACL 2026), show that repository/language imbalance can cause code tokenizers to learn under-used, source-specific tokens. Their SA-BPE family modifies merge selection to discourage this overfitting while keeping ordinary BPE inference.
+
+Source: https://aclanthology.org/2026.acl-long.1812/
+
+Tessera implications:
+- never tune syntax on one repository or project genre;
+- maintain a deliberately diverse corpus for tokenizer experiments;
+- record source/repository distribution alongside token measurements;
+- measure whether a proposed compact operator is genuinely common across model tokenizers or merely favored by one training distribution;
+- include an adversarial "unseen repository/domain" split in syntax-token benchmarks.
+
+### Tokenizers as a core design decision
+
+Alqahtani et al., *Stop Taking Tokenizers for Granted: They Are Core Design Decisions in Large Language Models* (EACL 2026), reinforces that tokenization choices materially affect LLM behavior and efficiency.
+
+Source: https://aclanthology.org/2026.eacl-long.394/
+
+Tessera implication: tokenizer variance is not a post-hoc tooling metric. It belongs in the language RFC acceptance criteria.
+
+## Grammar-token alignment target
+
+Tessera should define a **grammar alignment score** for canonical TC.
+
+For each lexical/grammar unit `g` and tokenizer `m`, measure whether the model tokenizer:
+- keeps `g` intact;
+- splits `g` consistently;
+- merges `g` with unrelated neighboring syntax;
+- changes segmentation under harmless surrounding rewrites.
+
+A candidate operator can be visually tiny but still be rejected if segmentation is unstable across important model families.
+
+This suggests three independent compactness metrics:
+
+```
+char_density      = semantic_units / bytes
+model_density     = semantic_units / model_tokens
+grammar_alignment = stable_grammar_boundaries / grammar_units
+```
+
+The language should optimize the latter two first.
+
+## Context token economics
+
+Token optimization applies to context tiles and graph packets too.
+
+A repeated tech-stack fact such as `axum 0.8 + tokio 1 + no blocking` should be:
+1. represented once as a typed graph node;
+2. referenced locally by a compact handle;
+3. expanded only when the task touches code whose context predicate resolves true.
+
+This means source-level token efficiency and harness-level context compression are one combined optimization problem rather than separate features.
