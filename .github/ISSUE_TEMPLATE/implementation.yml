@@ -1,0 +1,31 @@
+name: Implementation
+description: Implement a bounded Tessera compiler/tooling slice
+title: "impl: "
+labels: []
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: Observable capability to add.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Files/crates/representations expected to change.
+    validations:
+      required: true
+  - type: textarea
+    id: invariants
+    attributes:
+      label: Invariants
+      description: Semantic, round-trip, safety or context boundaries that must remain true.
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification
+      description: Tests/benchmarks required for completion.
+    validations:
+      required: true
