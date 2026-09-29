@@ -8,10 +8,13 @@
 //! Textual form is a boring S-expression (`.tir` files), e.g.
 //! `(func add (param a i64) (param b i64) (return i64) (body (add i64 (var a i64) (var b i64))))`.
 
+use std::fmt;
+
 /// Scalar type in the v0 subset.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TirType {
     I64,
+    Bool,
 }
 
 impl TirType {
@@ -20,6 +23,23 @@ impl TirType {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::I64 => "i64",
+            Self::Bool => "bool",
+        }
+    }
+
+    /// All known scalar types, in canonical declaration order.
+    #[must_use]
+    pub const fn all() -> &'static [TirType] {
+        &[TirType::I64, TirType::Bool]
+    }
+
+    /// Parse a type from its canonical spelling, or `None` if unknown.
+    #[must_use]
+    pub fn parse(name: &str) -> Option<TirType> {
+        match name {
+            "i64" => Some(TirType::I64),
+            "bool" => Some(TirType::Bool),
+            _ => None,
         }
     }
 }
@@ -32,6 +52,9 @@ pub enum TirExpr {
         value: i64,
         ty: TirType,
     },
+    Bool {
+        value: bool,
+    },
     Var {
         name: String,
         ty: TirType,
@@ -41,6 +64,17 @@ pub enum TirExpr {
         rhs: Box<Self>,
         ty: TirType,
     },
+    Eq {
+        lhs: Box<Self>,
+        rhs: Box<Self>,
+    },
+    And {
+        lhs: Box<Self>,
+        rhs: Box<Self>,
+    },
+    Not {
+        expr: Box<Self>,
+    },
 }
 
 impl TirExpr {
@@ -48,6 +82,8 @@ impl TirExpr {
     pub const fn ty(&self) -> TirType {
         match self {
             Self::Int { ty, .. } | Self::Var { ty, .. } | Self::Add { ty, .. } => *ty,
+            Self::Bool { .. } | Self::Eq { .. } | Self::And { .. } => TirType::Bool,
+            Self::Not { .. } => TirType::Bool,
         }
     }
 
@@ -56,10 +92,14 @@ impl TirExpr {
     pub fn to_text(&self) -> String {
         match self {
             Self::Int { value, ty } => format!("(int {value} {})", ty.as_str()),
+            Self::Bool { value } => format!("(bool {value})"),
             Self::Var { name, ty } => format!("(var {name} {})", ty.as_str()),
             Self::Add { lhs, rhs, ty } => {
                 format!("(add {} {} {})", ty.as_str(), lhs.to_text(), rhs.to_text())
             }
+            Self::Eq { lhs, rhs } => format!("(eq {} {})", lhs.to_text(), rhs.to_text()),
+            Self::And { lhs, rhs } => format!("(and {} {})", lhs.to_text(), rhs.to_text()),
+            Self::Not { expr } => format!("(not {})", expr.to_text()),
         }
     }
 }
@@ -98,6 +138,13 @@ impl TirFunction {
     }
 }
 
+/// Compact display for diagnostics and logs.
+impl fmt::Display for TirType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -133,5 +180,20 @@ mod tests {
             func.to_text(),
             "(func add (param a i64) (param b i64) (return i64) (body (add i64 (var a i64) (var b i64))))"
         );
+    }
+
+    #[test]
+    fn bool_literal_round_trips() {
+        let expr = TirExpr::Bool { value: true };
+        assert_eq!(expr.ty(), TirType::Bool);
+        assert_eq!(expr.to_text(), "(bool true)");
+    }
+
+    #[test]
+    fn type_parse_round_trip() {
+        for ty in TirType::all() {
+            assert_eq!(TirType::parse(ty.as_str()), Some(*ty));
+        }
+        assert_eq!(TirType::parse("i32"), None);
     }
 }

@@ -1,0 +1,25 @@
+f
+f foo
+f foo()
+f foo(a:i64)
+f foo(a:i64)>
+f foo(a:i64)>i64
+f foo(a:i64)>i64=
+f foo(a:i64)>i64=1+
+f foo(a:i64)>i64=+1
+f foo(a:i64)>i64=1++
+f foo(a:bool)>bool=1
+f foo(a:i64)>i64=unknown
+f 123(a:i64)>i64=1
+f foo(a:i64)>i64=1 extra
+f foo(a:i64,b:u32)>i64=a+b
+f foo(a:i64)>u32=a
+f foo(a:i64)>i64=
+f (a:i64)>i64=a
+f foo(a:i64,b:i64)>i64=a+b+
+f foo(a:i64)>i64=(a
+f foo(a:i64)>i64=a))
+f foo(a:i64)>i64=9223372036854775808
+f foo(a:i64)>i64=-9223372036854775809
+f foo(>i64=1
+f foo(a:i64)>i64=a b

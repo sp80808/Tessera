@@ -1,0 +1,7 @@
+[[bench]]
+name = "tessera_syntax_bench"
+harness = false
+
+[dependencies]
+criterion = { workspace = true }
+tessera-syntax = { path = ".." }

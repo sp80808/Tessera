@@ -458,6 +458,14 @@ fn strip_types(expr: &TirExpr) -> AstExpr {
         TirExpr::Add { lhs, rhs, .. } => {
             AstExpr::Add(Box::new(strip_types(lhs)), Box::new(strip_types(rhs)))
         }
+        TirExpr::Bool { value } => AstExpr::Int(*value as i64),
+        TirExpr::Eq { lhs, rhs } => {
+            AstExpr::Add(Box::new(strip_types(lhs)), Box::new(strip_types(rhs)))
+        }
+        TirExpr::And { lhs, rhs } => {
+            AstExpr::Add(Box::new(strip_types(lhs)), Box::new(strip_types(rhs)))
+        }
+        TirExpr::Not { expr } => strip_types(expr),
     }
 }
 

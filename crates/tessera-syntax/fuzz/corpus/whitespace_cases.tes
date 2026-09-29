@@ -1,0 +1,33 @@
+f add(a:i64,b:i64)>i64=a+b
+f add( a:i64 , b:i64 ) > i64 = a + b
+f	add(a:i64,b:i64)>i64=a+b
+f
+add
+(
+a:i64
+,
+b:i64
+)
+>
+i64
+=
+a
++
+b
+
+f add(a:i64,b:i64)>i64=a+b	
+	
+f add(a:i64,b:i64)>i64=a+b
+
+// comment only
+
+f add(a:i64,b:i64)>i64=a+b//comment
+// leading
+f add(a:i64,b:i64)>i64=a+b
+// between
+f
+add(a:i64,b:i64)
+>
+i64
+=
+a+b
