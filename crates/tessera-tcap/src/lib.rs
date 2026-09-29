@@ -35,7 +35,7 @@ pub use crate::derive::derive_tcap;
 pub use crate::graph::{CapabilityGraph, Edge, EdgeKind, Node, NodeId};
 pub use crate::lattice::{Capability, CapabilityState};
 pub use crate::nodes::{BorrowNode, PlaceNode, ProjectionNode};
-pub use crate::transitions::{Transition, TransitionError, TransitionSystem};
+pub use crate::transitions::{TransitionError, TransitionSystem};
 
 /// Entry point for the TCap crate.
 #[must_use]

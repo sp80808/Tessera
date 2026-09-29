@@ -2,7 +2,7 @@
 
 use super::graph::{CapabilityGraph, Edge, EdgeKind, Node};
 use super::lattice::{BorrowId, BorrowKind, Capability, CapabilityState, PlaceId};
-use super::nodes::{PlaceNode, Span};
+use super::nodes::{BorrowExtent, PlaceNode, PlaceType, Span};
 use std::fmt;
 
 /// Debug projection for ownership traces.
@@ -30,11 +30,14 @@ impl<'a> DebugProjection<'a> {
         
         // Initial state: all places at function entry
         for place in self.graph.places() {
-            if let PlaceNode::Local { name, .. } | PlaceNode::Remote { arg_index, .. } = place {
-                let state = self.graph.state(place.id()).cloned().unwrap_or_default();
-                output.push_str(&format!("{}:{}", self.place_short_name(place), state.capability));
-                output.push('\n');
-            }
+            let name = match place {
+                PlaceNode::Local { name, .. } => name.clone(),
+                PlaceNode::Remote { arg_index, .. } => format!("arg#{arg_index}"),
+                _ => continue,
+            };
+            let state = self.graph.state(place.id()).cloned().unwrap_or_default();
+            output.push_str(&format!("{name}:{}", state.capability));
+            output.push('\n');
         }
 
         // Trace edges in order

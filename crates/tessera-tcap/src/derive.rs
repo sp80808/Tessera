@@ -1,10 +1,11 @@
 //! TIR integration: derive TCap from TIR functions.
 
-use super::graph::{CapabilityGraph, EdgeKind, NodeId, Span};
-use super::lattice::{Capability, CapabilityState};
-use super::nodes::{PlaceNode, PlaceType, BorrowNode, BorrowKind, BorrowExtent};
+use super::graph::{CapabilityGraph, EdgeKind, NodeId};
+use super::lattice::{BorrowKind, Capability, CapabilityState, PlaceId};
+use super::nodes::{BorrowNode, BorrowExtent, PlaceNode, PlaceType, Span};
 use super::transitions::{TransitionSystem, TransitionResult};
 use tessera_tir::{TirExpr, TirFunction, TirParam, TirType};
+use std::collections::HashMap;
 
 /// Context for deriving TCap from TIR.
 pub struct TCapDeriver {
@@ -13,8 +14,6 @@ pub struct TCapDeriver {
     local_places: HashMap<String, PlaceNode>,
     next_place_id: u32,
 }
-
-use std::collections::HashMap;
 
 impl TCapDeriver {
     #[must_use]
@@ -54,7 +53,7 @@ impl TCapDeriver {
         // Drop all locals at end of function
         self.drop_all_locals();
 
-        self.system.graph
+        self.system.graph().clone()
     }
 
     fn derive_expr(&mut self, expr: &TirExpr) {
@@ -182,7 +181,7 @@ impl BorrowingDeriver {
         // Derive body with borrow tracking
         self.derive_expr_borrow(&func.body);
 
-        self.system.graph
+        self.system.graph().clone()
     }
 
     fn derive_expr_borrow(&mut self, expr: &TirExpr) {

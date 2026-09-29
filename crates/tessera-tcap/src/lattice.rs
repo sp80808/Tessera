@@ -154,6 +154,15 @@ pub enum BorrowKind {
     Mutable,
 }
 
+impl fmt::Display for BorrowKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Shared => f.write_str("shared"),
+            Self::Mutable => f.write_str("mutable"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BorrowId(pub u32);
 
