@@ -1,6 +1,6 @@
 use std::{env, fs, process::ExitCode};
 
-use tessera_db::{byte_len, line_count, source_units, Database, SourceFile};
+use tessera_db::{Database, SourceFile, byte_len, line_count, source_units};
 
 fn main() -> ExitCode {
     let mut args = env::args_os();
