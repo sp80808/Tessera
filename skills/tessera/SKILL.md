@@ -141,3 +141,42 @@ tsr ctx update
 ```
 
 Agents must check command availability/version rather than assume all planned commands exist.
+
+
+## Automatic graph/context maintenance
+
+When operating a Tessera-aware harness, do not treat context as a static prompt file.
+
+For every meaningful repository change:
+1. update compiler-derived graph nodes/edges;
+2. invalidate evidence whose dependency slice changed;
+3. resolve conditional stack context against current manifest/lockfile/target;
+4. run the cheapest relevant verification;
+5. persist new test/benchmark evidence;
+6. compact or retire superseded agent lessons;
+7. surface unresolved contradictions rather than overwriting them.
+
+## Context packet optimization
+
+Retrieve broadly enough for recall, then pack narrowly.
+
+Prefer pre-composed graph paths such as:
+- caller -> changed symbol -> invariant -> test;
+- dependency version -> API constraint -> affected symbol;
+- diagnostic -> prior failure -> verified fix;
+- unsafe operation -> obligation -> verifier.
+
+This reduces repository integration width as well as raw tokens.
+
+## Ideation/research mode
+
+When asked to continue language ideation:
+1. mine graph telemetry for repeated context/token costs;
+2. search recent programming-language, code-tokenizer and code-agent research;
+3. inspect analogous GitHub/Hugging Face implementations;
+4. distinguish language feature from harness feature;
+5. create a falsifiable design hypothesis;
+6. define tokenizer, model-success, compiler and runtime measurements;
+7. only then propose promotion into the spec.
+
+Do not optimize visual readability unless it improves model correctness/debugging enough to justify its token cost.
