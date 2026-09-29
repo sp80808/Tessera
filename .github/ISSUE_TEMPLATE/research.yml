@@ -1,0 +1,38 @@
+name: Research / experiment
+description: Propose or record a falsifiable Tessera research task
+title: "research: "
+labels: []
+body:
+  - type: textarea
+    id: question
+    attributes:
+      label: Research question
+      description: What concrete uncertainty should this resolve?
+    validations:
+      required: true
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: Hypothesis
+      description: State a falsifiable hypothesis where possible.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Existing evidence / prior art
+      description: Include primary papers, docs or repository revisions.
+  - type: textarea
+    id: method
+    attributes:
+      label: Experiment / method
+      description: Dataset, tokenizer/model versions, benchmarks and controls.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Exit criteria
+      description: What result closes this issue?
+    validations:
+      required: true
