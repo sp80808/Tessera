@@ -7,11 +7,13 @@ description: Work safely and efficiently in Tessera projects using compact sourc
 
 ## Mental model
 
-Tessera has three views:
+Tessera has five important views:
 
-- **TC** — compact canonical source optimized for LLM token efficiency.
+- **TC** — compact canonical source optimized for measured LLM token efficiency.
 - **TIR** — explicit semantic expansion used for reasoning/debugging.
 - **TCG** — project/context knowledge graph used to retrieve task-relevant context.
+- **TMT** — reversible model/task-specific transport compression; never treat it as canonical source.
+- **TCap** — compiler-derived ownership/borrow capability graph used for checking, diagnostics and agent context.
 
 Never assume that reading TC alone is the best debugging strategy.
 
@@ -19,10 +21,10 @@ Never assume that reading TC alone is the best debugging strategy.
 
 1. Read project manifest and compiler version.
 2. Obtain the relevant TIR for touched symbols.
-3. Query TCG for the task with an explicit token budget.
+3. Query TCG for the task with an explicit token budget and prefer structure-first paths over file dumps.
 4. Check stale/conflicting external facts before using them.
 5. Make the smallest semantic change.
-6. Format to canonical TC.
+6. Format to canonical TC. Generate TMT only as a derived transport artifact when useful.
 7. Compile and run targeted tests.
 8. Inspect ownership/effect diagnostics in TIR form when failure is non-trivial.
 9. Run token regression checks for syntax/library changes.
@@ -62,11 +64,12 @@ If TC is opaque:
 - request dense diagnostic + expanded diagnostic;
 - trace source span -> TIR node -> MIR/native location when needed.
 
-For ownership errors inspect:
-- owner;
-- move site;
-- loan creation;
-- loan end;
+For ownership errors inspect TCap first:
+- capability before the operation;
+- transition edge that failed;
+- owner/move site;
+- loan creation/end;
+- reborrow chain;
 - conflicting operation;
 - suggested legal reorderings.
 
@@ -180,3 +183,25 @@ When asked to continue language ideation:
 7. only then propose promotion into the spec.
 
 Do not optimize visual readability unless it improves model correctness/debugging enough to justify its token cost.
+
+
+## Incremental query discipline
+
+Compiler/agent work should preserve the separation between deterministic semantic queries and nondeterministic external tools.
+
+- source/manifests/lockfiles/evidence snapshots are inputs;
+- parse/type/effect/TIR/TCap/TCG projections are deterministic queries;
+- web research and model inference happen outside the semantic query graph;
+- verified results re-enter as versioned evidence inputs;
+- context/transport changes must not invalidate executable semantics unless an explicit compile-time input changed.
+
+## TMT discipline
+
+Use TMT only when measured for the target task/model.
+
+Every TMT transform requires:
+- exact inverse;
+- versioned profile;
+- token measurement;
+- no hidden ownership/unsafe/effect semantics in editable regions;
+- comparison of total tokens-to-success, not compression ratio alone.
