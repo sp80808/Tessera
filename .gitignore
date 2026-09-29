@@ -1,4 +1,12 @@
-/target
+/target/
+**/*.rs.bk
 .DS_Store
 *.swp
 *.swo
+.idea/
+.vscode/
+.tessera/cache/
+.tessera/tmp/
+coverage/
+*.profraw
+*.profdata
