@@ -12,3 +12,4 @@ path = "src/lib.rs"
 
 [dependencies]
 tessera-tir = { path = "../tessera-tir" }
+thiserror = "1.0"

@@ -3,6 +3,7 @@ members = [
     "crates/tessera-db",
     "crates/tessera-syntax",
     "crates/tessera-tir",
+    "crates/tessera-tcap",
     "crates/tessera-cli",
 ]
 resolver = "3"

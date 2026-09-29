@@ -145,7 +145,7 @@ pub struct BorrowNode {
     pub origin_span: Span,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BorrowExtent {
     Lexical { start: u32, end: u32 },
     NonLexical { points: Vec<u32> },

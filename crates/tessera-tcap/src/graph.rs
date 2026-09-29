@@ -1,6 +1,7 @@
 //! Capability graph structure with nodes and edges.
 
 use std::collections::HashMap;
+use std::fmt;
 use super::lattice::{BorrowId, Capability, CapabilityState, PlaceId};
 use super::nodes::{BorrowNode, PlaceNode, ProjectionNode, Span};
 
@@ -182,11 +183,10 @@ impl CapabilityGraph {
         tir_op: String,
         before_state: CapabilityState,
         after_state: CapabilityState,
-    ) -> EdgeId {
-        let id = EdgeId(self.next_edge_id);
-        self.next_edge_id += 1;
+    ) -> Edge {
+        let id = self.next_edge_id();
         let constraint_id = if self.next_constraint_id > 0 {
-            Some(ConstraintId(self.next_constraint_id))
+            Some(self.next_constraint_id())
         } else {
             None
         };
@@ -201,8 +201,8 @@ impl CapabilityGraph {
             after_state,
             constraint_id,
         };
-        self.edges.push(edge);
-        id
+        self.edges.push(edge.clone());
+        edge
     }
 
     /// Get a place node by ID.
@@ -281,8 +281,36 @@ impl CapabilityGraph {
         }).map(|p| p.id())
     }
 
-    /// Add a constraint ID for the next edge.
-    pub fn next_constraint(&mut self) -> ConstraintId {
+    /// Get the next node ID and increment.
+    pub fn next_node_id(&mut self) -> NodeId {
+        let id = NodeId(self.next_node_id);
+        self.next_node_id += 1;
+        id
+    }
+
+    /// Get the next edge ID and increment.
+    pub fn next_edge_id(&mut self) -> EdgeId {
+        let id = EdgeId(self.next_edge_id);
+        self.next_edge_id += 1;
+        id
+    }
+
+    /// Get the next borrow ID and increment.
+    pub fn next_borrow_id(&mut self) -> BorrowId {
+        let id = BorrowId(self.next_borrow_id);
+        self.next_borrow_id += 1;
+        id
+    }
+
+    /// Get the next place ID and increment.
+    pub fn next_place_id(&mut self) -> PlaceId {
+        let id = PlaceId(self.next_place_id);
+        self.next_place_id += 1;
+        id
+    }
+
+    /// Get the next constraint ID and increment.
+    pub fn next_constraint_id(&mut self) -> ConstraintId {
         let id = ConstraintId(self.next_constraint_id);
         self.next_constraint_id += 1;
         id

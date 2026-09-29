@@ -6,6 +6,9 @@
 //! - W (Write): write where permitted (e.g., partial init)
 //! - 0 (None): no access
 
+use std::collections::HashMap;
+use std::fmt;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Capability {
     Exclusive,

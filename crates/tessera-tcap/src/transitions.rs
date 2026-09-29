@@ -1,6 +1,6 @@
 //! Capability state transition system.
 
-use super::graph::{CapabilityGraph, Edge, EdgeKind};
+use super::graph::{CapabilityGraph, Edge, EdgeKind, Node, NodeId};
 use super::lattice::{BorrowId, BorrowKind, BorrowRef, Capability, CapabilityState, PlaceId};
 use super::nodes::{BorrowNode, BorrowExtent, PlaceNode, Span};
 use thiserror::Error;
