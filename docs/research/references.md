@@ -209,3 +209,64 @@ When promoting a research idea into language design:
 4. reproduce when feasible;
 5. add a benchmark before freezing syntax/semantics;
 6. retain contradicting evidence in the graph.
+
+
+## Additional 2026 tokenizer and repository-reasoning evidence
+
+### Source-Attributed BPE — ACL 2026
+
+Pavel Chizhov, Egor Bogomolov, Ivan P. Yamshchikov. *From Where Words Come: Efficient Regularization of Code Tokenizers Through Source Attribution*.
+
+Why it matters: shows code-tokenizer vocabulary can overfit to source/repository imbalance and create under-trained tokens; motivates multi-repository, multi-language token benchmarking for Tessera.
+
+- https://aclanthology.org/2026.acl-long.1812/
+
+### Stop Taking Tokenizers for Granted — EACL 2026
+
+Sawsan Alqahtani et al. *Stop Taking Tokenizers for Granted: They Are Core Design Decisions in Large Language Models*.
+
+Why it matters: reinforces treating tokenizer design/behavior as a first-class model-system decision rather than preprocessing trivia.
+
+- https://aclanthology.org/2026.eacl-long.394/
+
+### RepoReason — ACL 2026
+
+Jia Li, Yuxin Su, Michael R. Lyu. *From Laboratory to Real-World Applications: Benchmarking Agentic Code Reasoning at the Repository Level*.
+
+Why it matters: introduces white-box repository reasoning diagnostics and reports integration width as a major bottleneck in evaluated frontier models. Tessera should therefore measure not only context tokens but how many disconnected facts a model must integrate.
+
+- https://aclanthology.org/2026.acl-long.399/
+
+### GALLa — ACL 2025
+
+Ziyin Zhang et al. *GALLa: Graph Aligned Large Language Models for Improved Source Code Understanding*.
+
+Why it matters: emphasizes semantic program information such as data flow that ordinary source text does not explicitly provide to code LLMs.
+
+- https://aclanthology.org/2025.acl-long.676/
+
+### Knowledge Graph Based Repository-Level Code Generation — 2025
+
+Mihir Athale, Vishal Vaddina.
+
+Why it matters: repository code represented structurally as a graph can improve context-aware retrieval/generation versus flatter retrieval baselines in the reported experiments.
+
+- https://arxiv.org/abs/2505.14394
+
+## GitHub reconnaissance — 2026-09-29
+
+Searches for repository graph agents, token-efficient languages and Rust/Cranelift language implementations surfaced the following **implementation leads**, not authoritative evidence:
+
+- https://github.com/r3tr0-afk/repo-graph-rag-agent
+- https://github.com/mikekonan/cograph
+- https://github.com/Cheesecaster/RepoCortex
+- https://github.com/robertkarlsson2-design/ION
+- https://github.com/AeroForger/Sydrogen
+- https://github.com/fajarkraton/fajar-lang
+- https://github.com/agam-lang/agam
+
+Future research agents should inspect architecture, activity, license and actual implementation before borrowing patterns.
+
+## Hugging Face connector status
+
+The 2026-09-29 environment exposed Hugging Face search actions in connector metadata, but calls to paper/model/space search returned a runtime "tool not found" error. Existing Hugging Face paper links above remain useful navigational references, but no claim in this research pass should be described as having been validated through the live HF search connector.
