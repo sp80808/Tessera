@@ -1,6 +1,10 @@
 [workspace]
 members = [
     "crates/tessera-db",
+    "crates/tessera-syntax",
+    "crates/tessera-tir",
+    "crates/tessera-sema",
+    "crates/tessera-context",
     "crates/tessera-cli",
 ]
 resolver = "3"
@@ -8,9 +12,9 @@ resolver = "3"
 [workspace.package]
 version = "0.0.1"
 edition = "2024"
-license = "MIT OR Apache-2.0"
 repository = "https://github.com/sp80808/Tessera"
 rust-version = "1.85"
+publish = false
 
 [workspace.dependencies]
 salsa = "=0.28.5"
