@@ -2,13 +2,17 @@
 name = "tessera-cli"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
+publish.workspace = true
 
 [[bin]]
 name = "tsr"
 path = "src/main.rs"
 
 [dependencies]
+tessera-context = { path = "../tessera-context" }
 tessera-db = { path = "../tessera-db" }
+tessera-sema = { path = "../tessera-sema" }
+tessera-syntax = { path = "../tessera-syntax" }
+tessera-tir = { path = "../tessera-tir" }
