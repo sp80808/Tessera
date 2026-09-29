@@ -21,6 +21,8 @@ Tessera is being designed around three representations:
 | **TC — Tessera Compact** | canonical, aggressively token-dense source |
 | **TIR — Tessera Intent IR** | explicit, lossless semantic/debug expansion |
 | **TCG — Tessera Context Graph** | project, dependency, evidence, troubleshooting and agent context |
+| **TMT — Tessera Model Transport** | reversible task/model-specific token compression; never canonical source |
+| **TCap — capability graph view** | compiler-derived ownership/borrow transitions for checking and diagnostics |
 
 The working invariant is that TC can be expanded into explicit intent and canonicalized back without semantic loss.
 
@@ -37,6 +39,10 @@ The runtime program does not silently depend on research metadata. External cont
 - [Context graph + autonomous harness](docs/research/context-graph-harness.md)
 - [Context lattice / layered conditional metadata](docs/research/context-lattice.md)
 - [Context tile language proposal](docs/spec/context-tiles.md)
+- [Tessera Model Transport proposal](docs/spec/model-transport.md)
+- [Ownership capability graph proposal](docs/spec/ownership-capability-graph.md)
+- [Incremental semantic query-engine architecture](docs/architecture/incremental-query-engine.md)
+- [Research pass 2: transport, active context, ownership graphs](docs/research/2026-09-29-pass2.md)
 - [Semantic core / memory safety](docs/research/semantic-core.md)
 - [Compiler architecture](docs/research/compiler-architecture.md)
 - [Benchmark methodology](docs/research/benchmarks.md)
@@ -51,7 +57,10 @@ The runtime program does not silently depend on research metadata. External cont
 - memory model: affine ownership + shared/exclusive borrowing + explicit unsafe capabilities;
 - canonical formatter: exactly one TC spelling;
 - debugging: dense diagnostics plus expanded TIR diagnostics;
-- context harness: graph retrieval + token-budgeted compression + provenance/freshness verification;
+- context harness: structure-first graph retrieval + active context workspace + token-budgeted compression + provenance/freshness verification;
+- compiler/context architecture: shared incremental semantic query database;
+- model transport: reversible compiler-generated compression separate from canonical TC;
+- ownership diagnostics: TCap capability graph derived from the formal semantic core;
 - research loop: GitHub + Hugging Face + papers + official docs, with findings quarantined until validated.
 
 ## Status
