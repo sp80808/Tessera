@@ -1,15 +1,14 @@
 [package]
-name = "tessera-cli"
+name = "tessera-syntax"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
-[[bin]]
-name = "tsr"
-path = "src/main.rs"
+[lib]
+name = "tessera_syntax"
+path = "src/lib.rs"
 
 [dependencies]
-tessera-db = { path = "../tessera-db" }
-tessera-syntax = { path = "../tessera-syntax" }
+tessera-tir = { path = "../tessera-tir" }
