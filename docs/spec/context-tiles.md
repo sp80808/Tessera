@@ -200,3 +200,108 @@ By default:
 Ordinary comments have no schema, no freshness, no provenance, no conditional retrieval and no trust model. External agent instruction files are useful but have poor symbol-level locality. Context tiles provide **small local hooks into a larger project knowledge graph**.
 
 The goal is not to put the internet in source code. The goal is to put enough typed handles in source code that an agent can reliably retrieve the right verified context.
+
+
+## Context lattice: nested information without prompt bloat
+
+Context tiles are best understood as local handles into a **context lattice**.
+
+A source span can inherit context from:
+- repository;
+- package;
+- module;
+- type;
+- function;
+- block;
+- feature/target branch;
+- current task.
+
+The harness computes the applicable meet/projection for a requested context class instead of concatenating all inherited metadata.
+
+Conceptually:
+
+```
+effective_ctx(span, task, env) =
+  resolve(
+    repo_ctx
+    + package_ctx
+    + module_ctx
+    + symbol_ctx
+    + conditional_ctx(env)
+    + task_ctx(task)
+  )
+```
+
+Conflicts remain explicit evidence edges; `resolve` does not mean "last text wins".
+
+## Condition-rich tech-stack syntax
+
+A major use case is embedding compact, dynamic tech-stack knowledge.
+
+Provisional examples:
+
+```tessera
+@c stk{
+  dep:axum~.8;
+  rt:tokio^1;
+  rust:>=1.91;
+  ?target(wasm){http:wasi;thread:no};
+  ?feat(tls){tls:rustls~.23;verify:#tls-smoke};
+  ?os(windows){io:iocp;ref:#win-net};
+}
+```
+
+A more aggressively compressed candidate might be:
+
+```tessera
+@c s{a~.8,t^1,r>=1.91;?w{h:wasi,th:0};?f(tls){x:ru~.23,v:#ts}}
+```
+
+These are intentionally extreme experiments. TIR must expand either form to the same typed structure. Only tokenizer/model benchmarks should decide which, if either, becomes canonical.
+
+## Layer references
+
+A tile may contain a compact reference to an expanded graph cluster:
+
+```tessera
+@c{stk:#S4;why:#D19;fix:#F7;test:#T2}
+```
+
+The source pays only the reference cost. The graph cluster may include:
+- dependency versions;
+- API excerpts;
+- rationale;
+- previous failures;
+- relevant tests;
+- provenance.
+
+A model packet can request just `#S4/signatures` or `#F7/summary` instead of expanding the full cluster.
+
+## Embedded troubleshooting context
+
+Known-failure knowledge should be addressable by machine-detectable signatures:
+
+```tessera
+@c fix{
+  ?err(E_CONNRESET){use:#retry-peer-close;proof:#net-prop};
+  ?diag("borrow:loan#17"){see:#ownership-reorder-3};
+  ?bench(lat>100us){profile:#alloc-path}
+}
+```
+
+The compact tile does not replace diagnostics. It links a current diagnostic/observation to previously verified project knowledge.
+
+## Context introspection
+
+Planned tooling:
+
+```
+tsr explain <span> --layers C0:C7
+tsr ctx show <span> --view stack
+tsr ctx show <span> --view fix
+tsr ctx why <fact>
+tsr ctx evidence <id>
+tsr ctx stale <span>
+```
+
+A human or weaker model should always be able to recover a readable explanation from cryptic source.
