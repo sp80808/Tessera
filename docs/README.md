@@ -48,6 +48,7 @@ The core TC grammar and TIR schema are intentionally not frozen yet. Issues #1 a
 ## Architecture
 
 - [Incremental query engine](architecture/incremental-query-engine.md)
+- [Repository layout](architecture/repository-layout.md)
 - [Architecture decisions](architecture/decisions/README.md)
 
 ## Design flow
