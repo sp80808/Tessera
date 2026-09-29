@@ -3,8 +3,10 @@
 Before changing Tessera, read:
 
 1. `skills/tessera/SKILL.md`
-2. `docs/research/README.md`
-3. the research/spec file relevant to the change.
+2. `docs/README.md`
+3. `ROADMAP.md`
+4. `docs/research/README.md`
+5. the research/spec/RFC/ADR relevant to the change.
 
 ## Non-negotiable project rules
 
@@ -30,3 +32,17 @@ When local evidence is insufficient:
 6. convert ideas into benchmarkable hypotheses before freezing design.
 
 See `skills/tessera/SKILL.md` for the complete agent workflow.
+
+
+## Design-state discipline
+
+- Research documents collect evidence and hypotheses.
+- Specs under `docs/spec/` are provisional unless explicitly promoted.
+- Significant language/tool changes go through `docs/rfcs/`.
+- Broad implementation architecture decisions go through `docs/architecture/decisions/`.
+- Do not describe an unimplemented proposal as existing behavior.
+
+## Implementation sequence
+
+Follow `ROADMAP.md`. Prefer vertical witnesses over broad scaffolding:
+parser/formatter/round-trip first, then semantic core, incremental query engine, native backend and context harness.
