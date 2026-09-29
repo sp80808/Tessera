@@ -1,6 +1,9 @@
 use std::{env, fs, process::ExitCode};
 
-use tessera_db::{Database, SourceFile, byte_len, line_count, source_units};
+use tessera_db::{
+    Database, SourceFile, byte_len, identifier_count, lexeme_count, line_count, number_count,
+    punctuation_count, source_units,
+};
 
 fn main() -> ExitCode {
     let mut args = env::args_os();
@@ -28,9 +31,13 @@ fn main() -> ExitCode {
     let file = SourceFile::new(&db, path.to_string_lossy().into_owned(), text);
 
     println!(
-        "{} bytes | {} lines | {} bootstrap units",
+        "{} bytes | {} lines | {} lexemes (id {} | num {} | punct {}) | {} bootstrap units",
         byte_len(&db, file),
         line_count(&db, file),
+        lexeme_count(&db, file),
+        identifier_count(&db, file),
+        number_count(&db, file),
+        punctuation_count(&db, file),
         source_units(&db, file)
     );
 
