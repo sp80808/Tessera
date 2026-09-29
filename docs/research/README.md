@@ -1,107 +1,125 @@
-# Tessera — core research dossier
+# Tessera Core Research
 
-Tessera is an experimental systems programming language designed around two unusual priorities:
+Status: **living research baseline**  
+Last reviewed: **2026-09-29**
 
-1. **Native systems performance and explicit control** comparable in ambition to Rust/C/Zig-class workloads.
-2. **LLM token efficiency and agent comprehension as first-class language metrics**, even when this makes canonical source difficult for humans to read.
+Tessera is an experimental systems programming language optimized for **LLM token efficiency, deterministic recoverability, and low-level native performance**. Human readability is secondary; debuggability and lossless intent translation are mandatory.
 
-Human readability is secondary to raw performance and model-token efficiency. **Debuggability, reversibility and intent recovery are not secondary.** Tessera therefore separates the executable language from the representations used to explain it.
+## Core architecture
 
-## The central hypothesis
+Tessera separates concerns that conventional languages force into one representation:
 
-A programming language can be aggressively compressed for machine generation and reasoning if:
+| Layer | Purpose |
+|---|---|
+| **TC — Tessera Compact** | canonical, aggressively token-dense executable source |
+| **TIR — Tessera Intent IR** | deterministic semantic expansion for debugging, review, translation and verification |
+| **TCG — Tessera Context Graph** | repository/build/operational/knowledge graph used by harnesses |
+| **CTX / Context Lattice** | typed, scoped and condition-aware metadata attached to code/project entities |
+| **Verification Ledger** | provenance, freshness, confidence and invalidation state for contextual claims |
 
-- the grammar is deterministic;
-- the compiler produces a lossless explicit semantic view;
-- one canonical compact spelling minimizes superficial variation;
-- ownership, effects and unsafe behavior remain mechanically visible;
-- contextual project knowledge is encoded as typed metadata rather than free-form comments;
-- an agent harness retrieves only task-relevant context under a token budget;
-- every external fact can carry provenance, freshness and verification status.
+The executable meaning of ordinary Tessera code must never require an LLM or live network lookup.
 
-## Three core representations
+## Non-negotiable design constraints
 
-### 1. Tessera Compact (TC)
+1. Optimize measured **model tokens**, not visual terseness.
+2. Benchmark syntax across multiple model tokenizer families; never optimize around one vocabulary.
+3. TC must have one deterministic canonical spelling for each construct.
+4. Every omitted/inferred semantic detail must be recoverable in TIR.
+5. Safe code targets affine ownership/borrowing without mandatory tracing GC.
+6. Unsafe operations remain explicit and carry inspectable obligations.
+7. Runtime semantics and agent/research context remain separate unless a compile-time context kind is explicitly semantic.
+8. External context is untrusted until verified and must retain provenance.
+9. Harnesses retrieve a task-relevant graph projection rather than dumping the repository.
+10. Syntax/semantics are promoted only after tokenizer, model-success, compiler and runtime experiments.
 
-Canonical source. Optimized for low model-token count, parser simplicity and low syntactic entropy.
+## Research dossier
 
-TC is allowed to be visually dense and near-unreadable without tooling.
-
-### 2. Tessera Intent IR (TIR)
-
-Lossless semantic expansion for humans and models. TIR exposes:
-
-- resolved names and inferred types;
-- moves, borrows, regions and drops;
-- implicit conversions and generic resolution;
-- desugared control flow;
-- unsafe obligations;
-- source-to-expansion mappings;
-- compile-time configuration decisions.
-
-Invariant target:
-
-```
-canonicalize(TIR_to_TC(TC_to_TIR(x))) == canonicalize(x)
-```
-
-### 3. Tessera Context Graph (TCG)
-
-A queryable graph of project, code, stack, evidence and troubleshooting context. Some graph facts are compiler-derived; others come from explicit context tiles, manifests, git history, tests, external documentation and research.
-
-TCG is **not** runtime state. It exists to help tools and agents obtain the right context without flooding prompts.
-
-## Research conclusions so far
-
-### Tokenization
-
-Recent code-model research makes it unsafe to equate character count with LLM efficiency. Code-aware subtokenization can reduce sequence length, while semantically equivalent formatting changes can change model behavior. Tessera must therefore benchmark **real model tokenizers**, not invent a character-density proxy.
-
-### Repository context
-
-Repository-level coding work increasingly benefits from structural or graph retrieval. Recent systems such as CodexGraph and RepoGraph represent repository relations explicitly. 2026 work such as RepoDistill goes further: retrieval alone is not enough; retrieved context itself should be selectively compressed under a learned or heuristic token budget.
-
-### Context as a language primitive
-
-Tessera will explore a compact, typed metadata syntax called **context tiles**. Tiles can attach project intent, tech-stack constraints, evidence references, failure history and agent hints to modules or symbols. Tiles are:
-- conditional;
-- layered;
-- provenance-aware;
-- independently refreshable;
-- removable from production artifacts;
-- excluded from runtime semantics unless explicitly used for compile-time configuration.
-
-### Safety
-
-The working semantic direction is an affine ownership model with explicit shared/exclusive borrows and explicit unsafe capabilities. We should borrow the *semantic strengths* of Rust without assuming Rust surface syntax is optimal for Tessera.
-
-## Research documents
-
+### Language / compiler
 - [Token efficiency and tokenizer-aware syntax](token-efficiency.md)
-- [Context graph and autonomous harness](context-graph-harness.md)
-- [Embedded context tiles](../spec/context-tiles.md)
-- [Semantic core and memory model](semantic-core.md)
-- [Compiler and backend architecture](compiler-architecture.md)
+- [Semantic core and memory-safety direction](semantic-core.md)
+- [Compiler and runtime architecture](compiler-architecture.md)
 - [Benchmark methodology](benchmarks.md)
+
+### Context-native agent architecture
+- [Context Graph and autonomous harness](context-graph-harness.md)
+- [Context Lattice: typed layered context](context-lattice.md)
+- [Context tiles — provisional language design](../spec/context-tiles.md)
+
+### Evidence
 - [Evidence ledger and related work](references.md)
 
-## Non-goals
+### Agent instructions
+- [Tessera agent skill](../../skills/tessera/SKILL.md)
+- [Repository agent rules](../../AGENTS.md)
 
-Tessera is not:
-- a code-golf language;
-- a natural-language programming language;
-- a prompt format masquerading as a language;
-- a tracing-GC-first application language;
-- a syntax that silently downloads knowledge and changes runtime semantics;
-- optimized for one proprietary tokenizer.
+## Strong findings guiding v0 research
 
-## Primary research questions
+- Code-aware tokenization can materially reduce source sequence length. CodeBPE reports about **17% shorter sequences without downstream performance loss** for punctuation grouping in the evaluated setup.
+- Compiler-aware lexical compression is a serious precedent: Li & Lu report **33.7% fewer input tokens** with compiler tokenization and contextual restoration in their experiment.
+- Tokenization is behaviorally relevant, not just a billing detail. TOKDRIFT reports prediction changes under semantics-preserving rewrites, motivating canonical source and grammar/token alignment measurement.
+- Repository/language imbalance can make code-tokenizer vocabularies source-specific and under-trained; Tessera therefore needs a diverse corpus and tokenizer portfolio rather than a Tessera-only tokenizer score.
+- Repository graphs can improve code-agent navigation, but retrieval is only half the problem: packing/compression and the number of disconnected facts a model must integrate also matter.
+- Real-world coding-agent context files are growing organically and inconsistently. Tessera's response is typed, scoped, conditional context that can render into conventional agent files when needed.
+- Independent AI-native language projects such as **toke** and **ION** validate that token-efficient language design is now an active engineering niche. Their self-reported results are useful precedents, not evidence for Tessera's own claims.
 
-1. Can TC materially beat Rust, Zig, C and C++ on median model-token count across tokenizer families?
-2. Does a canonical dense syntax improve or reduce code-generation correctness?
-3. How much context can TCG omit while preserving repo-level task performance?
-4. Can TIR make a near-unreadable TC program easier to debug than ordinary source?
-5. Can context tiles reduce hallucinated API use and stale-stack mistakes without bloating prompts?
-6. What is the correct trust model for self-updating context and research?
-7. Can ownership semantics be expressed with fewer surface tokens than Rust while retaining equivalent safety properties?
-8. Which backend gives the best bootstrap trade-off: Cranelift first, LLVM first, or dual backend?
+## The Context Lattice hypothesis
+
+A small source snippet may expose several orthogonal views without embedding all expanded text:
+
+- execution semantics;
+- ownership/effects;
+- exact tech-stack/version conditions;
+- architectural intent/invariants;
+- tests and verification evidence;
+- prior failure -> fix knowledge;
+- trusted agent workflow;
+- quarantined research hypotheses.
+
+The harness computes a task/environment-specific projection and expands only the required layers. This makes token efficiency a **language + retrieval + context-packing** problem.
+
+## Required toolchain views
+
+Planned deterministic tools:
+
+```
+tsr fmt
+tsr check
+tsr build
+tsr tir <symbol|file>
+tsr explain <symbol|span>
+tsr tokens [--models ...]
+tsr ctx build
+tsr ctx query "<task>" --budget N
+tsr ctx verify [--stale]
+tsr ctx research "<gap>" --github --hf --papers
+tsr ctx pack "<task>" --model <family>
+```
+
+These are design targets until implemented.
+
+## Research workflow
+
+```
+local source/spec
+ -> deterministic TIR + graph
+ -> detect missing fact
+ -> retrieve local evidence
+ -> external research only for the gap
+ -> quarantine claim
+ -> verify against current project/source/test
+ -> promote or reject
+ -> update graph/ledger
+ -> benchmark
+```
+
+## Immediate experiments
+
+1. Build a tokenizer-suite harness and equivalent Rust/C/Zig/Odin/Tessera micro-corpus.
+2. Define a tiny TC grammar and lossless TIR expansion/canonicalization round trip.
+3. Prototype compiler-derived symbol/call/ownership graph export.
+4. Implement CTX/context-tile parser with conditions, scope, provenance and freshness.
+5. Build graph-packet retrieval under explicit token budgets.
+6. Lower a safe-core subset through Cranelift and compare generated runtime/compile performance.
+7. Evaluate TC-only vs TC+TIR vs TC+TCG packets on generation and debugging tasks.
+
+Syntax examples remain provisional until those experiments produce evidence.
