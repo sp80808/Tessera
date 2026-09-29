@@ -35,6 +35,7 @@ The runtime program does not silently depend on research metadata. External cont
 - [Core research dossier](docs/research/README.md)
 - [Token efficiency research](docs/research/token-efficiency.md)
 - [Context graph + autonomous harness](docs/research/context-graph-harness.md)
+- [Context lattice / layered conditional metadata](docs/research/context-lattice.md)
 - [Context tile language proposal](docs/spec/context-tiles.md)
 - [Semantic core / memory safety](docs/research/semantic-core.md)
 - [Compiler architecture](docs/research/compiler-architecture.md)
