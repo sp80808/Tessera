@@ -34,6 +34,9 @@ The runtime program does not silently depend on research metadata. External cont
 
 ## Start here
 
+- [Documentation map](docs/README.md)
+- [Roadmap](ROADMAP.md)
+- [Contributing](CONTRIBUTING.md)
 - [Core research dossier](docs/research/README.md)
 - [Token efficiency research](docs/research/token-efficiency.md)
 - [Context graph + autonomous harness](docs/research/context-graph-harness.md)
@@ -62,6 +65,12 @@ The runtime program does not silently depend on research metadata. External cont
 - model transport: reversible compiler-generated compression separate from canonical TC;
 - ownership diagnostics: TCap capability graph derived from the formal semantic core;
 - research loop: GitHub + Hugging Face + papers + official docs, with findings quarantined until validated.
+
+## Repository state
+
+The repository now separates research, provisional specification, architecture decisions and future normative RFCs. Open issues are organized as experimentally gated implementation slices rather than a feature wishlist.
+
+See [ROADMAP.md](ROADMAP.md) for the current sequence: token/syntax laboratory → safety core → incremental compiler → context-native harness → integrated agent/compiler prototype.
 
 ## Status
 
