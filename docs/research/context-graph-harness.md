@@ -300,3 +300,117 @@ Ideation is not an unlimited browsing loop.
 **Context can guide compilation and agents, but it must not silently redefine ordinary runtime semantics.**
 
 Only explicit compile-time configuration constructs may affect the generated program. Troubleshooting notes, papers, web results and agent memories are non-semantic metadata.
+
+
+## 2026 evidence: retrieval is not enough
+
+### RepoDistill
+
+RepoDistill (Findings of ACL 2026) combines lightweight graph retrieval with learned fine-grained budget allocation and context compression. The paper reports that a 4B compressor can reduce input tokens by up to 66% while maintaining comparable performance in its reported setting.
+
+Source: https://aclanthology.org/2026.findings-acl.217/
+
+Tessera implication: the graph query should return a **candidate evidence set**, not the final prompt. A separate packing stage decides the representation/detail budget of every node.
+
+### RepoReason
+
+RepoReason (ACL 2026) proposes white-box repository reasoning diagnostics and reports an "aggregation deficit", with integration width as a major bottleneck in their model evaluations.
+
+Source: https://aclanthology.org/2026.acl-long.399/
+
+Tessera implication: context packing should not maximize retrieved facts. It should minimize the number of independently scattered facts the model must integrate. Where possible the compiler/harness should pre-compose:
+- call/data/ownership paths;
+- version-conditioned facts;
+- invariant + verifying-test pairs;
+- failure + proven-fix pairs;
+- dependency + relevant API contract.
+
+This motivates a new packing objective:
+
+```
+utility(packet) =
+  relevant_semantics
+  - token_cost
+  - stale_evidence_penalty
+  - contradiction_penalty
+  - integration_width_penalty
+```
+
+## Context projection pipeline
+
+The harness should support deterministic views over the same TCG:
+
+```
+repo
+ -> semantic graph
+ -> task-induced subgraph
+ -> condition resolution
+ -> freshness/verification pass
+ -> projection
+ -> compression
+ -> model packet
+```
+
+Recommended projections:
+
+- `exec` — signatures, control/data/ownership relations;
+- `stack` — exact dependency/toolchain/platform facts;
+- `why` — decisions/invariants/architectural intent;
+- `fix` — known failure signatures and verified remediations;
+- `test` — relevant checks and last evidence;
+- `agent` — trusted workflow guidance;
+- `research` — hypotheses and external evidence.
+
+The same five-line snippet can therefore expose multiple useful contexts without embedding all of their expanded text in source.
+
+## Knowledge graph as a self-maintaining project model
+
+A mature Tessera harness should automatically maintain four graph strata:
+
+1. **Compiler graph** — syntax, symbols, types, calls, data flow, ownership/effects.
+2. **Build graph** — packages, features, targets, versions, generated artifacts.
+3. **Operational graph** — tests, failures, benchmarks, traces, fixes.
+4. **Knowledge graph** — docs, papers, upstream examples, issues, agent lessons.
+
+Only the first two can directly participate in ordinary compilation. The latter strata inform agents and verification.
+
+### Change invalidation
+
+Evidence should be invalidated using dependency hashes rather than crude timestamps alone.
+
+Examples:
+- a test result becomes stale when code in its dependency slice changes;
+- a dependency API note becomes stale when the lockfile resolves a new incompatible version;
+- a performance claim becomes stale when compiler flags/target/toolchain change;
+- a GitHub example pinned to a commit stays immutable but its "current best practice" interpretation may expire.
+
+## Automated external-context acquisition
+
+When the local graph cannot satisfy a task, the harness can form a typed research request:
+
+```
+gap {
+  kind: api|prior_art|paper|model|failure
+  claim_needed
+  stack_constraints
+  recency
+  trust_floor
+  token_budget
+}
+```
+
+Adapters may query GitHub, Hugging Face, current documentation and scholarly sources. Returned material enters quarantine and must be normalized into claims/evidence before it can appear in a trusted context packet.
+
+## Ideation feedback into language design
+
+The harness should collect telemetry on **where context cost is repeatedly spent**.
+
+Candidates for new language/CTX primitives include:
+- repeated long dependency constraints;
+- recurring ownership explanations;
+- common unsafe proof obligations;
+- frequently retrieved architecture invariants;
+- repeated troubleshooting sequences;
+- context that models repeatedly misinterpret.
+
+No primitive is promoted solely because it saves tokens. It must also improve or preserve model success, deterministic expansion and compiler/tooling simplicity.
