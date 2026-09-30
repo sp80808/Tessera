@@ -9,3 +9,6 @@ rust-version.workspace = true
 [lib]
 name = "tessera_tir"
 path = "src/lib.rs"
+
+[dependencies]
+tessera-phases = { path = "../tessera-phases" }

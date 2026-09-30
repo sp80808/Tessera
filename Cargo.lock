@@ -727,6 +727,9 @@ dependencies = [
 [[package]]
 name = "tessera-tir"
 version = "0.0.1"
+dependencies = [
+ "tessera-phases",
+]
 
 [[package]]
 name = "tessera-tokenbench"

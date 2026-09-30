@@ -253,43 +253,80 @@ pub fn fmt(src: &str) -> Result<String, SyntaxError> {
     parse(src).map(|func| format_tc(&func))
 }
 
-/// Lower well-formed TIR back to canonical TC (infallible: TIR is explicit).
-#[must_use]
-pub fn lower_to_tc(func: &TirFunction) -> String {
-    format_tc(&AstFunction {
-        name: func.name.clone(),
-        params: func
-            .params
-            .iter()
-            .map(|param| {
-                (
-                    AstParam {
-                        name: param.name.clone(),
-                    },
-                    param.ty,
-                )
-            })
-            .collect(),
-        ret: func.ret,
-        body: strip_types(&func.body),
-    })
+/// A TIR construct the current TC grammar cannot spell. Lowering says so
+/// instead of guessing a spelling (a wrong spelling would silently change the
+/// program; the round-trip claim only covers what TC can express).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotSpellable {
+    /// What has no TC form, e.g. `` `eq` node `` or `` type `bool` ``.
+    pub what: String,
 }
 
-fn strip_types(expr: &TirExpr) -> AstExpr {
+impl fmt::Display for NotSpellable {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{} has no spelling in the current TC grammar (v0 subset: i64 and `+` only)",
+            self.what
+        )
+    }
+}
+
+impl std::error::Error for NotSpellable {}
+
+fn spellable_type(ty: TirType) -> Result<TirType, NotSpellable> {
+    match ty {
+        TirType::I64 => Ok(ty),
+        other => Err(NotSpellable {
+            what: format!("type `{other}`"),
+        }),
+    }
+}
+
+/// Lower TIR back to canonical TC. Fallible: TIR is richer than the v0 TC
+/// grammar, and anything TC cannot spell (`bool` types and literals, `eq`,
+/// `and`, `not`, `let`, `if`, `call`) is reported, never approximated.
+pub fn lower_to_tc(func: &TirFunction) -> Result<String, NotSpellable> {
+    let params = func
+        .params
+        .iter()
+        .map(|param| {
+            Ok((
+                AstParam {
+                    name: param.name.clone(),
+                },
+                spellable_type(param.ty)?,
+            ))
+        })
+        .collect::<Result<Vec<_>, NotSpellable>>()?;
+    Ok(format_tc(&AstFunction {
+        name: func.name.clone(),
+        params,
+        ret: spellable_type(func.ret)?,
+        body: strip_types(&func.body)?,
+    }))
+}
+
+fn strip_types(expr: &TirExpr) -> Result<AstExpr, NotSpellable> {
     match expr {
-        TirExpr::Int { value, .. } => AstExpr::Int(*value),
-        TirExpr::Var { name, .. } => AstExpr::Var(name.clone()),
-        TirExpr::Add { lhs, rhs, .. } => {
-            AstExpr::Add(Box::new(strip_types(lhs)), Box::new(strip_types(rhs)))
+        TirExpr::Int { value, ty } => {
+            spellable_type(*ty)?;
+            Ok(AstExpr::Int(*value))
         }
-        TirExpr::Bool { value } => AstExpr::Int(*value as i64),
-        TirExpr::Eq { lhs, rhs } => {
-            AstExpr::Add(Box::new(strip_types(lhs)), Box::new(strip_types(rhs)))
+        TirExpr::Var { name, ty } => {
+            spellable_type(*ty)?;
+            Ok(AstExpr::Var(name.clone()))
         }
-        TirExpr::And { lhs, rhs } => {
-            AstExpr::Add(Box::new(strip_types(lhs)), Box::new(strip_types(rhs)))
+        TirExpr::Add { lhs, rhs, ty } => {
+            spellable_type(*ty)?;
+            Ok(AstExpr::Add(
+                Box::new(strip_types(lhs)?),
+                Box::new(strip_types(rhs)?),
+            ))
         }
-        TirExpr::Not { expr } => strip_types(expr),
+        other => Err(NotSpellable {
+            what: format!("`{}` node", other.op_name()),
+        }),
     }
 }
 
@@ -346,7 +383,11 @@ mod tests {
             let tir = parse_with_spans(input)
                 .and_then(|(func, spans)| to_tir(&func, &spans))
                 .expect("lowers");
-            assert_eq!(lower_to_tc(&tir), **canonical, "input: {input}");
+            assert_eq!(
+                lower_to_tc(&tir).as_deref(),
+                Ok(*canonical),
+                "input: {input}"
+            );
         }
     }
 
@@ -385,6 +426,47 @@ mod tests {
             fmt("f 1(a:i64)>i64=a"),
             Err(SyntaxError::Unexpected { .. })
         ));
+    }
+
+    /// Regression for G5: `lower_to_tc` used to map `Bool`/`Eq`/`And`/`Not` onto
+    /// `Int`/`Add` and print a *different program* as if the round trip held.
+    /// Anything TC cannot spell must be an explicit error.
+    #[test]
+    fn lower_to_tc_refuses_what_tc_cannot_spell() {
+        use tessera_tir::TirModule;
+        for (tir, what) in [
+            ("(func f (return bool) (body (bool true)))", "type `bool`"),
+            (
+                "(func f (param a bool) (return i64) (body (int 1 i64)))",
+                "type `bool`",
+            ),
+            (
+                "(func f (return i64) (body (if i64 (bool true) (int 1 i64) (int 2 i64))))",
+                "`if` node",
+            ),
+            (
+                "(func f (param a i64) (return i64) (body (let x i64 (var a i64) (var x i64))))",
+                "`let` node",
+            ),
+            ("(func f (return i64) (body (call f i64)))", "`call` node"),
+        ] {
+            let module = TirModule::parse(tir).expect("fixture parses");
+            let err = lower_to_tc(&module.funcs[0]).expect_err(tir);
+            assert!(err.what.contains(what), "{tir}: {err}");
+        }
+        // a nested unspellable node is found too
+        let module = TirModule::parse(
+            "(func f (param a i64) (return i64) (body (add i64 (var a i64) (if i64 (bool true) (int 1 i64) (int 2 i64)))))",
+        )
+        .unwrap();
+        assert!(lower_to_tc(&module.funcs[0]).is_err());
+        // and what TC *can* spell still round-trips exactly
+        let module =
+            TirModule::parse(&expand("f add(a:i64,b:i64)>i64=a+b").unwrap()).expect("tir parses");
+        assert_eq!(
+            lower_to_tc(&module.funcs[0]).as_deref(),
+            Ok("f add(a:i64,b:i64)>i64=a+b")
+        );
     }
 
     /// Formatting changes (whitespace, comments, redundant parens) must not
