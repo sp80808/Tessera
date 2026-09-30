@@ -1,0 +1,8 @@
+struct P {
+    x: i64,
+    y: i64,
+}
+
+fn norm1(p: P) -> i64 {
+    p.x + p.y
+}

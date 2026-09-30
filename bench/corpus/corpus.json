@@ -1,0 +1,251 @@
+{
+  "schema_version": 1,
+  "semantic_units_definition": "One unit per: function definition; type definition (struct/enum); arithmetic or comparison operation (including the operation in a compound assignment); local binding (including accumulators); call; conditional (if/else or ternary); loop (init/test/step of a range loop are part of the one loop unit); match (1) plus one per arm; field access; borrow creation (shared or exclusive); read or write through a reference; ownership move (counted even when implicit); early return; result construction (Ok/Err); result propagation (?/try/or_return). Variable references, literals and type annotations count zero. Counted on the language-independent program, so every language variant of a program shares the same value.",
+  "candidates": {
+    "A": {"description": "Anchor. Function `f NAME(P:T,..)>U=BODY` (the only currently parsed form), bind `x:=v`, shared borrow `&x`, exclusive borrow `&!x`, implicit move, `match x{..}`, propagation `x?`.", "axes": {"fn": "f-keyword", "bind": "walrus", "excl_borrow": "amp-bang", "move": "implicit", "match": "match-keyword"}, "differs_from_anchor": ""},
+    "B": {"description": "A with function form `NAME:(P:T,..)>U=BODY` (benchmark-local reading of the matrix entry `f:T>U`; `f` keyword dropped).", "axes": {"fn": "name-colon-sig", "bind": "walrus", "excl_borrow": "amp-bang", "move": "implicit", "match": "match-keyword"}, "differs_from_anchor": "fn"},
+    "C": {"description": "A with bind spelled `x=v` (matrix candidate).", "axes": {"fn": "f-keyword", "bind": "plain-eq", "excl_borrow": "amp-bang", "move": "implicit", "match": "match-keyword"}, "differs_from_anchor": "bind"},
+    "D": {"description": "A with exclusive borrow spelled `!&x` (matrix candidate).", "axes": {"fn": "f-keyword", "bind": "walrus", "excl_borrow": "bang-amp", "move": "implicit", "match": "match-keyword"}, "differs_from_anchor": "excl_borrow"},
+    "E": {"description": "A with keyword bind `let x=v` (matrix verbose reference, whitespace compacted to what the lexer needs).", "axes": {"fn": "f-keyword", "bind": "let", "excl_borrow": "amp-bang", "move": "implicit", "match": "match-keyword"}, "differs_from_anchor": "bind"},
+    "F": {"description": "A with explicit move sigil `^x` at move sites (matrix candidate `^x`).", "axes": {"fn": "f-keyword", "bind": "walrus", "excl_borrow": "amp-bang", "move": "caret", "match": "match-keyword"}, "differs_from_anchor": "move"},
+    "G": {"description": "A with compact match `x?{..}` (matrix candidate) instead of `match x{..}`.", "axes": {"fn": "f-keyword", "bind": "walrus", "excl_borrow": "amp-bang", "move": "implicit", "match": "compact"}, "differs_from_anchor": "match"}
+  },
+  "programs": [
+    {
+      "id": "arith_add",
+      "category": "arithmetic",
+      "description": "Add two integers.",
+      "semantic_units": 2,
+      "semantic_units_note": "fn(1) + add(1)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/arith_add/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/arith_add/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/arith_add/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/arith_add/odin.odin", "status": null, "notes": ""},
+        {"lang": "tessera", "candidate": "A", "file": "programs/arith_add/tessera_A.tes", "status": "parsed", "notes": "Bootstrap-form function; `+` only. Verified by parser."},
+        {"lang": "tessera", "candidate": "B", "file": "programs/arith_add/tessera_B.tes", "status": "unparsed", "notes": "unparsed: function form `NAME:(..)>U=BODY` (candidate B)"}
+      ]
+    },
+    {
+      "id": "arith_multi",
+      "category": "arithmetic",
+      "description": "Add four integers (multi-parameter function).",
+      "semantic_units": 4,
+      "semantic_units_note": "fn(1) + add(3)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/arith_multi/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/arith_multi/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/arith_multi/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/arith_multi/odin.odin", "status": null, "notes": ""},
+        {"lang": "tessera", "candidate": "A", "file": "programs/arith_multi/tessera_A.tes", "status": "parsed", "notes": "Bootstrap-form function; `+` only. Verified by parser."},
+        {"lang": "tessera", "candidate": "B", "file": "programs/arith_multi/tessera_B.tes", "status": "unparsed", "notes": "unparsed: function form `NAME:(..)>U=BODY` (candidate B)"}
+      ]
+    },
+    {
+      "id": "arith_lits",
+      "category": "arithmetic",
+      "description": "Add integers and multi-digit integer literals.",
+      "semantic_units": 4,
+      "semantic_units_note": "fn(1) + add(3)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/arith_lits/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/arith_lits/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/arith_lits/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/arith_lits/odin.odin", "status": null, "notes": ""},
+        {"lang": "tessera", "candidate": "A", "file": "programs/arith_lits/tessera_A.tes", "status": "parsed", "notes": "Bootstrap-form function; `+` only. Verified by parser."},
+        {"lang": "tessera", "candidate": "B", "file": "programs/arith_lits/tessera_B.tes", "status": "unparsed", "notes": "unparsed: function form `NAME:(..)>U=BODY` (candidate B)"}
+      ]
+    },
+    {
+      "id": "let_chain",
+      "category": "binding",
+      "description": "Chain of let-bindings feeding a final expression.",
+      "semantic_units": 6,
+      "semantic_units_note": "fn(1) + ops(3: add, mul, sub) + bindings(2)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/let_chain/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/let_chain/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/let_chain/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/let_chain/odin.odin", "status": null, "notes": ""},
+        {"lang": "tessera", "candidate": "A", "file": "programs/let_chain/tessera_A.tes", "status": "unparsed", "notes": "unparsed: block body `{..;..}`, `:=` bind, `*`/`-`/`<`/`>` operators"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/let_chain/tessera_B.tes", "status": "unparsed", "notes": "unparsed: block body `{..;..}`, `:=` bind, `*`/`-`/`<`/`>` operators, function form `NAME:(..)>U=BODY` (candidate B)"},
+        {"lang": "tessera", "candidate": "C", "file": "programs/let_chain/tessera_C.tes", "status": "unparsed", "notes": "unparsed: block body `{..;..}`, `:=` bind, `*`/`-`/`<`/`>` operators, bind `x=v` (candidate C)"},
+        {"lang": "tessera", "candidate": "E", "file": "programs/let_chain/tessera_E.tes", "status": "unparsed", "notes": "unparsed: block body `{..;..}`, `:=` bind, `*`/`-`/`<`/`>` operators, keyword bind `let x=v` (candidate E)"}
+      ]
+    },
+    {
+      "id": "cond_larger",
+      "category": "conditional",
+      "description": "Return the larger of two integers.",
+      "semantic_units": 3,
+      "semantic_units_note": "fn(1) + compare(1) + branch(1)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/cond_larger/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/cond_larger/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/cond_larger/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/cond_larger/odin.odin", "status": null, "notes": "Odin if-expression `a if c else b`."},
+        {"lang": "tessera", "candidate": "A", "file": "programs/cond_larger/tessera_A.tes", "status": "unparsed", "notes": "unparsed: `if c{..}else{..}`, `*`/`-`/`<`/`>` operators"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/cond_larger/tessera_B.tes", "status": "unparsed", "notes": "unparsed: `if c{..}else{..}`, `*`/`-`/`<`/`>` operators, function form `NAME:(..)>U=BODY` (candidate B)"}
+      ]
+    },
+    {
+      "id": "loop_sum",
+      "category": "loop",
+      "description": "Sum the integers in the half-open range 0..n.",
+      "semantic_units": 4,
+      "semantic_units_note": "fn(1) + binding(1: acc) + loop(1) + accumulate(1)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/loop_sum/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/loop_sum/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/loop_sum/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/loop_sum/odin.odin", "status": null, "notes": ""},
+        {"lang": "tessera", "candidate": "A", "file": "programs/loop_sum/tessera_A.tes", "status": "unparsed", "notes": "unparsed: block body `{..;..}`, `:=` bind, `for i in 0..n{..}`, compound assignment `+=`"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/loop_sum/tessera_B.tes", "status": "unparsed", "notes": "unparsed: block body `{..;..}`, `:=` bind, `for i in 0..n{..}`, compound assignment `+=`, function form `NAME:(..)>U=BODY` (candidate B)"},
+        {"lang": "tessera", "candidate": "C", "file": "programs/loop_sum/tessera_C.tes", "status": "unparsed", "notes": "unparsed: block body `{..;..}`, `:=` bind, `for i in 0..n{..}`, compound assignment `+=`, bind `x=v` (candidate C)"},
+        {"lang": "tessera", "candidate": "E", "file": "programs/loop_sum/tessera_E.tes", "status": "unparsed", "notes": "unparsed: block body `{..;..}`, `:=` bind, `for i in 0..n{..}`, compound assignment `+=`, keyword bind `let x=v` (candidate E)"}
+      ]
+    },
+    {
+      "id": "struct_field",
+      "category": "aggregate",
+      "description": "Read two fields of a struct passed by value.",
+      "semantic_units": 5,
+      "semantic_units_note": "type(1) + fn(1) + field(2) + add(1)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/struct_field/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/struct_field/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/struct_field/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/struct_field/odin.odin", "status": null, "notes": ""},
+        {"lang": "tessera", "candidate": "A", "file": "programs/struct_field/tessera_A.tes", "status": "unparsed", "notes": "unparsed: `struct` item, field access"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/struct_field/tessera_B.tes", "status": "unparsed", "notes": "unparsed: `struct` item, field access, function form `NAME:(..)>U=BODY` (candidate B)"}
+      ]
+    },
+    {
+      "id": "call_chain",
+      "category": "calls",
+      "description": "Three functions; the last calls the other two in a nested call.",
+      "semantic_units": 7,
+      "semantic_units_note": "fn(3) + add(2) + call(2)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/call_chain/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/call_chain/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/call_chain/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/call_chain/odin.odin", "status": null, "notes": ""},
+        {"lang": "tessera", "candidate": "A", "file": "programs/call_chain/tessera_A.tes", "status": "unparsed", "notes": "unparsed: more than one function, calls"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/call_chain/tessera_B.tes", "status": "unparsed", "notes": "unparsed: more than one function, calls, function form `NAME:(..)>U=BODY` (candidate B)"}
+      ]
+    },
+    {
+      "id": "recursion_fact",
+      "category": "recursion",
+      "description": "Recursive factorial.",
+      "semantic_units": 6,
+      "semantic_units_note": "fn(1) + compare(1) + branch(1) + mul(1) + sub(1) + call(1)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/recursion_fact/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/recursion_fact/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/recursion_fact/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/recursion_fact/odin.odin", "status": null, "notes": ""},
+        {"lang": "tessera", "candidate": "A", "file": "programs/recursion_fact/tessera_A.tes", "status": "unparsed", "notes": "unparsed: `if c{..}else{..}`, calls, `*`/`-`/`<`/`>` operators"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/recursion_fact/tessera_B.tes", "status": "unparsed", "notes": "unparsed: `if c{..}else{..}`, calls, `*`/`-`/`<`/`>` operators, function form `NAME:(..)>U=BODY` (candidate B)"}
+      ]
+    },
+    {
+      "id": "borrow_shared",
+      "category": "ownership",
+      "description": "Read through a shared borrow; the caller creates the borrow.",
+      "semantic_units": 6,
+      "semantic_units_note": "fn(2) + borrow(1) + read-through-borrow(1) + add(1) + call(1)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/borrow_shared/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/borrow_shared/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/borrow_shared/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/borrow_shared/odin.odin", "status": null, "notes": "Odin parameters are immutable, so the callee borrow needs the idiomatic `v := v` shadow."},
+        {"lang": "tessera", "candidate": "A", "file": "programs/borrow_shared/tessera_A.tes", "status": "unparsed", "notes": "unparsed: more than one function, calls, deref `*x` / `&` in types"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/borrow_shared/tessera_B.tes", "status": "unparsed", "notes": "unparsed: more than one function, calls, deref `*x` / `&` in types, function form `NAME:(..)>U=BODY` (candidate B)"}
+      ]
+    },
+    {
+      "id": "borrow_excl",
+      "category": "ownership",
+      "description": "Mutate a local through an exclusive borrow, then return it.",
+      "semantic_units": 7,
+      "semantic_units_note": "fn(2) + borrow(1) + write-through-borrow(1) + add(1) + binding(1) + call(1)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/borrow_excl/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/borrow_excl/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/borrow_excl/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/borrow_excl/odin.odin", "status": null, "notes": ""},
+        {"lang": "tessera", "candidate": "A", "file": "programs/borrow_excl/tessera_A.tes", "status": "unparsed", "notes": "unparsed: more than one function, block body `{..;..}`, `:=` bind, calls, deref `*x` / `&` in types, compound assignment `+=`"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/borrow_excl/tessera_B.tes", "status": "unparsed", "notes": "unparsed: more than one function, block body `{..;..}`, `:=` bind, calls, deref `*x` / `&` in types, compound assignment `+=`, function form `NAME:(..)>U=BODY` (candidate B)"},
+        {"lang": "tessera", "candidate": "C", "file": "programs/borrow_excl/tessera_C.tes", "status": "unparsed", "notes": "unparsed: more than one function, block body `{..;..}`, `:=` bind, calls, deref `*x` / `&` in types, compound assignment `+=`, bind `x=v` (candidate C)"},
+        {"lang": "tessera", "candidate": "D", "file": "programs/borrow_excl/tessera_D.tes", "status": "unparsed", "notes": "unparsed: more than one function, block body `{..;..}`, `:=` bind, calls, deref `*x` / `&` in types, compound assignment `+=`, exclusive borrow `!&x` (candidate D)"},
+        {"lang": "tessera", "candidate": "E", "file": "programs/borrow_excl/tessera_E.tes", "status": "unparsed", "notes": "unparsed: more than one function, block body `{..;..}`, `:=` bind, calls, deref `*x` / `&` in types, compound assignment `+=`, keyword bind `let x=v` (candidate E)"}
+      ]
+    },
+    {
+      "id": "move_transfer",
+      "category": "ownership",
+      "description": "Transfer ownership of a struct value into a callee that reads a field.",
+      "semantic_units": 6,
+      "semantic_units_note": "type(1) + fn(2) + field(1) + call(1) + move(1, implicit in Rust)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/move_transfer/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/move_transfer/c.c", "status": null, "notes": "C/Zig/Odin pass a copy; only Rust and Tessera model the ownership transfer."},
+        {"lang": "zig", "candidate": null, "file": "programs/move_transfer/zig.zig", "status": null, "notes": "C/Zig/Odin pass a copy; only Rust and Tessera model the ownership transfer."},
+        {"lang": "odin", "candidate": null, "file": "programs/move_transfer/odin.odin", "status": null, "notes": "C/Zig/Odin pass a copy; only Rust and Tessera model the ownership transfer."},
+        {"lang": "tessera", "candidate": "A", "file": "programs/move_transfer/tessera_A.tes", "status": "unparsed", "notes": "unparsed: more than one function, `struct` item, field access, calls"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/move_transfer/tessera_B.tes", "status": "unparsed", "notes": "unparsed: more than one function, `struct` item, field access, calls, function form `NAME:(..)>U=BODY` (candidate B)"},
+        {"lang": "tessera", "candidate": "F", "file": "programs/move_transfer/tessera_F.tes", "status": "unparsed", "notes": "unparsed: more than one function, `struct` item, field access, calls, explicit move `^x` (candidate F)"}
+      ]
+    },
+    {
+      "id": "result_prop",
+      "category": "error-handling",
+      "description": "Fallible function and a caller that propagates the failure.",
+      "semantic_units": 11,
+      "semantic_units_note": "fn(2) + compare(1) + branch(1) + Err(1) + Ok(2) + call(1) + propagate(1) + binding(1) + add(1)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/result_prop/rust.rs", "status": null, "notes": "The error type is `()` so every language expresses only success-or-failure."},
+        {"lang": "c", "candidate": null, "file": "programs/result_prop/c.c", "status": null, "notes": "C has no Result type: status code plus out-parameter is the idiomatic equivalent."},
+        {"lang": "zig", "candidate": null, "file": "programs/result_prop/zig.zig", "status": null, "notes": "Zig error union with `try`; the error carries no payload, matching Rust's `Result<i64, ()>`."},
+        {"lang": "odin", "candidate": null, "file": "programs/result_prop/odin.odin", "status": null, "notes": "Odin multi-return `(i64, bool)` with `or_return`; the bool stands in for the payload-free error."},
+        {"lang": "tessera", "candidate": "A", "file": "programs/result_prop/tessera_A.tes", "status": "unparsed", "notes": "unparsed: more than one function, `if c{..}else{..}`, block body `{..;..}`, `:=` bind, `Result<..>`/`Ok`/`Err`, calls, `*`/`-`/`<`/`>` operators"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/result_prop/tessera_B.tes", "status": "unparsed", "notes": "unparsed: more than one function, `if c{..}else{..}`, block body `{..;..}`, `:=` bind, `Result<..>`/`Ok`/`Err`, calls, `*`/`-`/`<`/`>` operators, function form `NAME:(..)>U=BODY` (candidate B)"},
+        {"lang": "tessera", "candidate": "C", "file": "programs/result_prop/tessera_C.tes", "status": "unparsed", "notes": "unparsed: more than one function, `if c{..}else{..}`, block body `{..;..}`, `:=` bind, `Result<..>`/`Ok`/`Err`, calls, `*`/`-`/`<`/`>` operators, bind `x=v` (candidate C)"},
+        {"lang": "tessera", "candidate": "E", "file": "programs/result_prop/tessera_E.tes", "status": "unparsed", "notes": "unparsed: more than one function, `if c{..}else{..}`, block body `{..;..}`, `:=` bind, `Result<..>`/`Ok`/`Err`, calls, `*`/`-`/`<`/`>` operators, keyword bind `let x=v` (candidate E)"}
+      ]
+    },
+    {
+      "id": "early_return",
+      "category": "control-flow",
+      "description": "Two guard clauses that return early, then the fall-through value.",
+      "semantic_units": 7,
+      "semantic_units_note": "fn(1) + compare(2) + branch(2) + return(2)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/early_return/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/early_return/c.c", "status": null, "notes": ""},
+        {"lang": "zig", "candidate": null, "file": "programs/early_return/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/early_return/odin.odin", "status": null, "notes": ""},
+        {"lang": "tessera", "candidate": "A", "file": "programs/early_return/tessera_A.tes", "status": "unparsed", "notes": "unparsed: block body `{..;..}`, `if c{..}else{..}`, `return`, `*`/`-`/`<`/`>` operators"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/early_return/tessera_B.tes", "status": "unparsed", "notes": "unparsed: block body `{..;..}`, `if c{..}else{..}`, `return`, `*`/`-`/`<`/`>` operators, function form `NAME:(..)>U=BODY` (candidate B)"}
+      ]
+    },
+    {
+      "id": "state_machine",
+      "category": "match",
+      "description": "Three-state enum and a transition function that matches on it.",
+      "semantic_units": 6,
+      "semantic_units_note": "type(1) + fn(1) + match(1) + arms(3)",
+      "variants": [
+        {"lang": "rust", "candidate": null, "file": "programs/state_machine/rust.rs", "status": null, "notes": ""},
+        {"lang": "c", "candidate": null, "file": "programs/state_machine/c.c", "status": null, "notes": "`default` arm stands in for the Done arm (equivalent for a 3-valued enum)."},
+        {"lang": "zig", "candidate": null, "file": "programs/state_machine/zig.zig", "status": null, "notes": ""},
+        {"lang": "odin", "candidate": null, "file": "programs/state_machine/odin.odin", "status": null, "notes": "`case:` (default) stands in for the Done arm (equivalent for a 3-valued enum; keeps the proc terminating)."},
+        {"lang": "tessera", "candidate": "A", "file": "programs/state_machine/tessera_A.tes", "status": "unparsed", "notes": "unparsed: `enum` item, `match x{..}`"},
+        {"lang": "tessera", "candidate": "B", "file": "programs/state_machine/tessera_B.tes", "status": "unparsed", "notes": "unparsed: `enum` item, `match x{..}`, function form `NAME:(..)>U=BODY` (candidate B)"},
+        {"lang": "tessera", "candidate": "G", "file": "programs/state_machine/tessera_G.tes", "status": "unparsed", "notes": "unparsed: `enum` item, `match x{..}`, compact match `x?{..}` (candidate G)"}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+f tri(n:i64)>i64={acc=0;for i in 0..n{acc+=i};acc}

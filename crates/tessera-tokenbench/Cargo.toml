@@ -16,5 +16,15 @@ name = "tess-tokenbench"
 path = "src/main.rs"
 
 [dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+sha2 = "0.11.0"
 tessera-phases = { path = "../tessera-phases" }
 tessera-syntax = { path = "../tessera-syntax" }
+tiktoken-rs = "0.12.1"
+tokenizers = { version = "0.23.2", default-features = false, features = ["fancy-regex"], optional = true }
+
+[features]
+# HF `tokenizers` JSON loader, pure-Rust regex (fancy-regex): no onig / C++ build.
+default = ["hf"]
+hf = ["dep:tokenizers"]

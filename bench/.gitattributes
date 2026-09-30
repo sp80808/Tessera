@@ -1,0 +1,2 @@
+# The corpus identity hash is over raw bytes: keep LF endings on every platform.
+* text=auto eol=lf
