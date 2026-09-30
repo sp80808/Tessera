@@ -4,7 +4,7 @@
 //! literal types, result types) is written out on every node. Nothing here is
 //! canonical source; TIR is always derived from TC. Where TC can spell a TIR
 //! program, lowering back yields the canonical TC spelling (see
-//! `tessera_sema::lower_to_tc`); where it cannot, lowering says so.
+//! `tessera_syntax::lower_to_tc`); where it cannot, lowering says so.
 //!
 //! Textual form is a boring S-expression (`.tir` files), one `(func ...)` per
 //! function, e.g.

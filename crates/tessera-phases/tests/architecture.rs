@@ -367,3 +367,91 @@ fn manifest_parser_understands_all_dependency_table_styles() {
         .collect();
     assert_eq!(deps, want);
 }
+
+/// Files known to be unreachable from their crate root, with the issue that
+/// wires them. The test fails if one of them becomes declared, so the list
+/// cannot go stale.
+const KNOWN_UNWIRED: &[&str] = &[
+    // HIR input validation for `resolve`; dead code until #20 adds a caller.
+    "tessera-sema/src/input.rs",
+];
+
+/// `mod NAME;` (any visibility) declared on this line, if any.
+fn declared_module(line: &str) -> Option<&str> {
+    let line = line.trim();
+    let rest = match line.strip_prefix("pub") {
+        Some(r) if r.starts_with('(') => r.split_once(')').map_or(r, |(_, t)| t),
+        Some(r) => r,
+        None => line,
+    };
+    let name = rest.trim_start().strip_prefix("mod ")?.trim();
+    name.strip_suffix(';').map(str::trim)
+}
+
+/// INV-BUILD-1: every `.rs` file under a crate's `src/` is reached by a `mod`
+/// declaration. An undeclared file is never type-checked, formatted, linted
+/// or tested, yet reads like implemented code: `tessera-mir`'s lowering and
+/// verifier sat in that state (0 tests run) until they were wired.
+#[test]
+fn every_source_file_is_declared_as_a_module() {
+    for krate in crates() {
+        let src = krate.dir.join("src");
+        let mut files = Vec::new();
+        rust_files(&src, &mut files);
+        let mut declared = BTreeSet::new();
+        for file in &files {
+            let text = fs::read_to_string(file).expect("source");
+            declared.extend(text.lines().filter_map(declared_module).map(str::to_owned));
+        }
+        for file in &files {
+            let rel = file.strip_prefix(&src).expect("under src");
+            let is_root = rel.parent() == Some(Path::new(""))
+                && matches!(rel.to_str(), Some("lib.rs" | "main.rs"));
+            if is_root || rel.starts_with("bin") {
+                continue;
+            }
+            let module = match file.file_stem().and_then(|s| s.to_str()) {
+                Some("mod") => rel
+                    .parent()
+                    .and_then(|p| p.file_name())
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default(),
+                Some(stem) => stem,
+                None => continue,
+            };
+            let dir = krate
+                .dir
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+            let key = format!("{dir}/src/{}", rel.to_string_lossy().replace('\\', "/"));
+            let known = KNOWN_UNWIRED.contains(&key.as_str());
+            if declared.contains(module) {
+                assert!(
+                    !known,
+                    "INV-BUILD-1: {key} is wired now; remove it from KNOWN_UNWIRED"
+                );
+            } else {
+                assert!(
+                    known,
+                    "INV-BUILD-1: {key} is not declared by any `mod {module};`, so it is never compiled or tested"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn module_declarations_are_recognized_in_every_visibility() {
+    for (line, want) in [
+        ("mod ir;", Some("ir")),
+        ("pub mod interp;", Some("interp")),
+        ("  pub(crate) mod lower;", Some("lower")),
+        ("pub(in crate::x) mod deep ;", Some("deep")),
+        ("mod tests {", None),
+        ("pub fn module() {}", None),
+        ("pub use dump::dump;", None),
+    ] {
+        assert_eq!(declared_module(line), want, "{line:?}");
+    }
+}
