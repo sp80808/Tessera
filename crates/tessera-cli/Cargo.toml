@@ -14,5 +14,7 @@ path = "src/main.rs"
 tessera-phases = { path = "../tessera-phases" }
 tessera-db = { path = "../tessera-db" }
 tessera-syntax = { path = "../tessera-syntax" }
+tessera-hir = { path = "../tessera-hir" }
+tessera-sema = { path = "../tessera-sema" }
 tessera-tir = { path = "../tessera-tir" }
 tessera-mir = { path = "../tessera-mir" }

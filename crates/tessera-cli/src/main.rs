@@ -1,8 +1,8 @@
 use std::{env, ffi::OsString, fs, process::ExitCode};
 
 use tessera_db::{Database, SourceFile, byte_len, line_count, source_units};
-use tessera_phases::{DiagnosticSet, FileId, Severity};
-use tessera_syntax::{cst::parse_file, expand, fmt, lexer};
+use tessera_phases::{DiagnosticSet, Severity};
+use tessera_syntax::{fmt, lexer};
 
 mod pipeline;
 
@@ -12,7 +12,7 @@ fn usage() -> ExitCode {
     eprintln!(
         "usage: tsr <file.tes> | tsr fmt <file.tes> | tsr tir <file.tes>\n       \
          tsr tokens <file.tes>   (scaffold: lossless token dump)\n       \
-         tsr check <file.tes>    (scaffold: syntax diagnostics only; no name/type checking yet)\n       \
+         tsr check <file.tes>    (syntax, name and type diagnostics, all at once)\n       \
          tsr mir --overflow=wrapping|trapping <file.tes|file.tir>\n       \
          tsr run --overflow=wrapping|trapping <file.tes|file.tir> [FUNCTION] [ARG...]\n       \
          \x20        (reference MIR interpreter; FUNCTION is required when the file has several)\n       \
@@ -80,7 +80,7 @@ fn run_tokens(text: &str) -> ExitCode {
 }
 
 fn run_check(text: &str, path: &std::ffi::OsStr) -> ExitCode {
-    let out = parse_file(FileId(0), text);
+    let out = pipeline::check_tc(text);
     eprint!(
         "{}",
         render(&path.to_string_lossy(), text, &out.diagnostics)
@@ -88,14 +88,29 @@ fn run_check(text: &str, path: &std::ffi::OsStr) -> ExitCode {
     if out.diagnostics.has_errors() {
         ExitCode::from(1)
     } else {
-        println!("ok: syntax only ({} tokens)", out.value.tokens.len());
+        let n = out.value.module.funcs.len();
+        println!("ok: {n} function(s) checked (syntax, names, types)");
         ExitCode::SUCCESS
     }
 }
 
-fn run_expand(text: &str, as_tir: bool) -> ExitCode {
-    let result = if as_tir { expand(text) } else { fmt(text) };
-    match result {
+/// `tsr tir`: TC through the phases to TIR text.
+fn run_tir(text: &str, path: &std::ffi::OsStr) -> ExitCode {
+    let path = path.to_string_lossy();
+    match pipeline::load_tir(&path, text, Input::Tc) {
+        Ok((module, _)) => {
+            println!("{}", module.to_text());
+            ExitCode::SUCCESS
+        }
+        Err(rendered) => {
+            eprintln!("{}", rendered.trim_end());
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn run_fmt(text: &str) -> ExitCode {
+    match fmt(text) {
         Ok(out) => {
             println!("{out}");
             ExitCode::SUCCESS
@@ -208,7 +223,8 @@ fn main() -> ExitCode {
         return match first.to_str() {
             Some("tokens") => run_tokens(&text),
             Some("check") => run_check(&text, &path),
-            _ => run_expand(&text, first == "tir"),
+            Some("tir") => run_tir(&text, &path),
+            _ => run_fmt(&text),
         };
     }
     if args.next().is_some() {
@@ -224,6 +240,8 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tessera_phases::FileId;
+    use tessera_syntax::cst::parse_file;
 
     #[test]
     fn line_col_is_one_based_and_counts_bytes() {

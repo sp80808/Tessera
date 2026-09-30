@@ -3,17 +3,17 @@
 //! Pure driver glue: every function returns a value or a rendered error
 //! string; printing and exit codes stay in `main`.
 //!
-//! Two inputs reach TIR today:
+//! Two inputs reach TIR:
 //! - `.tir` text, read by the standalone TIR reader with provenance into the
 //!   `.tir` file (contract TIR-2: a hand-written file can be checked and
 //!   lowered);
-//! - anything else is TC, through the bootstrap bridge
-//!   (`tessera_syntax::{to_tir, tir_provenance}`, TEMPORARY(#19)) until the
-//!   HIR/sema path produces TIR.
+//! - anything else is TC, through the phases: CST -> HIR -> resolve ->
+//!   typeck -> TIR ([`check_tc`]).
 
 use tessera_mir::interp::{self, Limits, Value};
 use tessera_mir::{FuncId, LowerOptions, MirFunction, MirModule, OverflowMode, lower_module};
-use tessera_phases::FileId;
+use tessera_phases::{FileId, PhaseOutput};
+use tessera_sema::TirOutput;
 use tessera_tir::{ModuleProvenance, TirModule};
 
 use crate::render;
@@ -50,18 +50,38 @@ pub fn parse_overflow(value: &str) -> Option<OverflowMode> {
 
 pub const OVERFLOW_REQUIRED: &str = "--overflow=wrapping|trapping is required: integer overflow semantics are not decided yet (open question O1)";
 
-/// Source text -> TIR plus provenance, or a rendered error.
-pub fn load_tir(text: &str, input: Input) -> Result<(TirModule, ModuleProvenance), String> {
+/// The TC front half: parse, lower to HIR, resolve, type check and lower to
+/// TIR. Every phase runs even when an earlier one reported errors (all phases
+/// are tolerant), so independent mistakes are all reported at once; the TIR
+/// holds the functions whose facts are complete.
+#[must_use]
+pub fn check_tc(text: &str) -> PhaseOutput<TirOutput> {
+    let parsed = tessera_syntax::cst::parse_file(FileId(0), text);
+    let hir = tessera_hir::lower(&parsed.value, text);
+    let sema = tessera_sema::analyze(&hir.value);
+    let mut diagnostics = parsed.diagnostics;
+    diagnostics.extend(hir.diagnostics);
+    diagnostics.extend(sema.diagnostics);
+    PhaseOutput::with(sema.value.tir, diagnostics)
+}
+
+/// Source text -> TIR plus provenance, or rendered errors (`path` names the
+/// file in them).
+pub fn load_tir(
+    path: &str,
+    text: &str,
+    input: Input,
+) -> Result<(TirModule, ModuleProvenance), String> {
     match input {
-        Input::Tir => TirModule::parse_with_provenance(FileId(0), text).map_err(|e| e.to_string()),
+        Input::Tir => {
+            TirModule::parse_with_provenance(FileId(0), text).map_err(|e| format!("{path}: {e}"))
+        }
         Input::Tc => {
-            let (func, spans) =
-                tessera_syntax::parse_with_spans(text).map_err(|e| e.to_string())?;
-            let tir = tessera_syntax::to_tir(&func, &spans).map_err(|e| e.to_string())?;
-            let provenance = ModuleProvenance {
-                funcs: vec![tessera_syntax::tir_provenance(&spans)],
-            };
-            Ok((TirModule { funcs: vec![tir] }, provenance))
+            let out = check_tc(text);
+            if out.diagnostics.has_errors() {
+                return Err(render(path, text, &out.diagnostics));
+            }
+            Ok((out.value.module, out.value.provenance))
         }
     }
 }
@@ -74,7 +94,7 @@ pub fn lower(
     input: Input,
     overflow: OverflowMode,
 ) -> Result<MirModule, String> {
-    let (tir, provenance) = load_tir(text, input).map_err(|e| format!("{path}: {e}"))?;
+    let (tir, provenance) = load_tir(path, text, input)?;
     let out = lower_module(&tir, &provenance, &LowerOptions { overflow });
     if !out.diagnostics.is_empty() {
         return Err(render(path, text, &out.diagnostics));
