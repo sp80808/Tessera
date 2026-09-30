@@ -16,9 +16,12 @@
 
 use std::fmt;
 
+use lexer::TokenKind;
 use tessera_tir::{TirExpr, TirFunction, TirParam};
 
 pub use tessera_tir::TirType;
+
+pub mod lexer;
 
 // ---------- tokens ----------
 
@@ -53,61 +56,37 @@ impl Token {
     }
 }
 
+/// Lex for the parser: trivia dropped, integers parsed, unknown input rejected.
+/// The lossless token stream lives in [`lexer`]; this is the bootstrap parser's
+/// view of it (the parser fails at the first bad token; recovery is #18 work).
 fn lex(src: &str) -> Result<Vec<(Token, usize)>, SyntaxError> {
-    let bytes = src.as_bytes();
-    let mut pos = 0;
     let mut out = Vec::new();
-    while pos < bytes.len() {
-        let c = bytes[pos];
-        if c.is_ascii_whitespace() {
-            pos += 1;
-        } else if c == b'/' && bytes.get(pos + 1) == Some(&b'/') {
-            while pos < bytes.len() && bytes[pos] != b'\n' {
-                pos += 1;
+    for tok in lexer::lex(src) {
+        let text = tok.text(src);
+        let token = match tok.kind {
+            TokenKind::Whitespace | TokenKind::LineComment => continue,
+            TokenKind::Ident if text == "f" => Token::Func,
+            TokenKind::Ident => Token::Ident(text.to_owned()),
+            TokenKind::Int => Token::Int(
+                text.parse()
+                    .map_err(|_| SyntaxError::IntOutOfRange { at: tok.start })?,
+            ),
+            TokenKind::Colon => Token::Colon,
+            TokenKind::Comma => Token::Comma,
+            TokenKind::LParen => Token::LParen,
+            TokenKind::RParen => Token::RParen,
+            TokenKind::Gt => Token::Gt,
+            TokenKind::Eq => Token::Eq,
+            TokenKind::Plus => Token::Plus,
+            TokenKind::Error => {
+                return Err(SyntaxError::Unexpected {
+                    at: tok.start,
+                    want: "TC token",
+                    got: format!("byte {:#04X}", text.as_bytes()[0]),
+                });
             }
-        } else if c.is_ascii_alphabetic() || c == b'_' {
-            let start = pos;
-            while pos < bytes.len() && (bytes[pos].is_ascii_alphanumeric() || bytes[pos] == b'_') {
-                pos += 1;
-            }
-            let word = &src[start..pos];
-            out.push((
-                if word == "f" {
-                    Token::Func
-                } else {
-                    Token::Ident(word.to_owned())
-                },
-                start,
-            ));
-        } else if c.is_ascii_digit() {
-            let start = pos;
-            while pos < bytes.len() && bytes[pos].is_ascii_digit() {
-                pos += 1;
-            }
-            let value: i64 = src[start..pos]
-                .parse()
-                .map_err(|_| SyntaxError::IntOutOfRange { at: start })?;
-            out.push((Token::Int(value), start));
-        } else {
-            let token = match c {
-                b':' => Token::Colon,
-                b',' => Token::Comma,
-                b'(' => Token::LParen,
-                b')' => Token::RParen,
-                b'>' => Token::Gt,
-                b'=' => Token::Eq,
-                b'+' => Token::Plus,
-                _ => {
-                    return Err(SyntaxError::Unexpected {
-                        at: pos,
-                        want: "TC token",
-                        got: format!("byte {c:#04X}"),
-                    });
-                }
-            };
-            out.push((token, pos));
-            pos += 1;
-        }
+        };
+        out.push((token, tok.start));
     }
     Ok(out)
 }
@@ -164,6 +143,11 @@ pub enum SyntaxError {
     TrailingInput {
         at: usize,
     },
+    /// Parenthesis nesting exceeded [`MAX_NESTING`]; bounded so hostile input
+    /// yields a diagnostic instead of overflowing the stack.
+    NestingTooDeep {
+        at: usize,
+    },
     EmptyProgram,
 }
 
@@ -195,6 +179,9 @@ impl fmt::Display for SyntaxError {
             }
             Self::IntOutOfRange { at } => write!(f, "offset {at}: integer out of i64 range"),
             Self::TrailingInput { at } => write!(f, "offset {at}: trailing input after function"),
+            Self::NestingTooDeep { at } => {
+                write!(f, "offset {at}: nesting deeper than {MAX_NESTING} levels")
+            }
             Self::EmptyProgram => write!(f, "empty program: expected one `f` function"),
         }
     }
@@ -204,9 +191,13 @@ impl std::error::Error for SyntaxError {}
 
 // ---------- parser (deterministic recursive descent, no backtracking) ----------
 
+/// Provisional recursion bound for parenthesized expressions.
+pub const MAX_NESTING: usize = 128;
+
 struct Parser {
     tokens: Vec<(Token, usize)>,
     pos: usize,
+    depth: usize,
 }
 
 impl Parser {
@@ -310,8 +301,13 @@ impl Parser {
         match self.next() {
             Some((Token::Int(value), _)) => Ok(AstExpr::Int(value)),
             Some((Token::Ident(name), _)) => Ok(AstExpr::Var(name)),
-            Some((Token::LParen, _)) => {
+            Some((Token::LParen, at)) => {
+                if self.depth >= MAX_NESTING {
+                    return Err(SyntaxError::NestingTooDeep { at });
+                }
+                self.depth += 1;
                 let inner = self.parse_add()?;
+                self.depth -= 1;
                 self.expect(Token::RParen, "`)`")?;
                 Ok(inner)
             }
@@ -335,7 +331,12 @@ pub fn parse(src: &str) -> Result<AstFunction, SyntaxError> {
     if tokens.is_empty() {
         return Err(SyntaxError::EmptyProgram);
     }
-    Parser { tokens, pos: 0 }.parse_function()
+    Parser {
+        tokens,
+        pos: 0,
+        depth: 0,
+    }
+    .parse_function()
 }
 
 // ---------- lowering (AST -> TIR: every inferred type made explicit) ----------
@@ -563,5 +564,103 @@ mod tests {
             fmt("f 1(a:i64)>i64=a"),
             Err(SyntaxError::Unexpected { .. })
         ));
+    }
+
+    /// Formatting changes (whitespace, comments, redundant parens) must not
+    /// change the semantic result: the same TIR comes out.
+    #[test]
+    fn surface_variation_does_not_change_semantic_result() {
+        let canonical = expand("f add(a:i64,b:i64)>i64=a+b").expect("expands");
+        for variant in [
+            "f add( a:i64 , b:i64 ) > i64 = a + b",
+            "// c\nf add(a:i64,b:i64)>i64=a+b // t\n",
+            "f add(a:i64,b:i64)>i64=(a+b)",
+            "\n\n  f   add(a:i64,b:i64)>i64=((a)+(b))",
+        ] {
+            assert_eq!(
+                expand(variant).as_deref(),
+                Ok(canonical.as_str()),
+                "{variant:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn expansion_is_deterministic() {
+        for (input, _) in CORPUS {
+            assert_eq!(expand(input), expand(input));
+        }
+    }
+
+    #[test]
+    fn hostile_nesting_returns_a_diagnostic_not_a_crash() {
+        let n = 200_000;
+        let src = format!("f x()>i64={}1{}", "(".repeat(n), ")".repeat(n));
+        assert!(matches!(
+            parse(&src),
+            Err(SyntaxError::NestingTooDeep { .. })
+        ));
+        let at_limit = format!(
+            "f x()>i64={}1{}",
+            "(".repeat(MAX_NESTING),
+            ")".repeat(MAX_NESTING)
+        );
+        assert_eq!(fmt(&at_limit).as_deref(), Ok("f x()>i64=1"));
+    }
+
+    #[test]
+    fn frontend_never_panics_on_arbitrary_text() {
+        const PIECES: &[&str] = &[
+            "f ",
+            "add",
+            "(",
+            ")",
+            ":",
+            ",",
+            ">",
+            "=",
+            "+",
+            "i64",
+            "a",
+            "b",
+            "1",
+            " ",
+            "\n",
+            "//",
+            "𝑥",
+            "9999999999999999999999",
+            "\u{0}",
+            "bool",
+        ];
+        let mut state = 0x2545_F491_4F6C_DD1D_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..20_000 {
+            let len = (next() % 24) as usize;
+            let src: String = (0..len)
+                .map(|_| PIECES[(next() % PIECES.len() as u64) as usize])
+                .collect();
+            let _ = parse(&src);
+            let _ = fmt(&src);
+            let _ = expand(&src);
+        }
+    }
+
+    /// KNOWN CONTRACT GAP (PROV-2, tracked by #19/#23): lowering to TIR loses
+    /// the source position of the offending name (`at` is hard-coded to 0).
+    /// Enable when AST nodes carry spans.
+    #[test]
+    #[ignore = "PROV-2: to_tir reports offset 0 for semantic errors; fixed when AST/HIR carry spans (#19)"]
+    fn semantic_errors_keep_their_source_offset() {
+        let src = "f add(a:i64)>i64=a+b";
+        let want = src.rfind('b').expect("has b");
+        match expand(src) {
+            Err(SyntaxError::UnboundVar { at, .. }) => assert_eq!(at, want),
+            other => panic!("unexpected: {other:?}"),
+        }
     }
 }
