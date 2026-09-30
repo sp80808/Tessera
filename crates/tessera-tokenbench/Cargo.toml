@@ -1,0 +1,20 @@
+[package]
+name = "tessera-tokenbench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Reproducible tokenizer benchmark and grammar-candidate comparison for TC syntax decisions (issue #1). Dev tool, not a compiler phase."
+
+[lib]
+name = "tessera_tokenbench"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tess-tokenbench"
+path = "src/main.rs"
+
+[dependencies]
+tessera-phases = { path = "../tessera-phases" }
+tessera-syntax = { path = "../tessera-syntax" }

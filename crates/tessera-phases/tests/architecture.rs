@@ -32,6 +32,8 @@ const LAYERS: &[(&str, &[&str])] = &[
         "tessera-codegen-cranelift",
         &["tessera-phases", "tessera-mir"],
     ),
+    // dev tool, not a compiler phase: measures TC lexemes against real tokenizers
+    ("tessera-tokenbench", &["tessera-phases", "tessera-syntax"]),
     (
         "tessera-context",
         &[

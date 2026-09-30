@@ -679,8 +679,33 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-hir"
+version = "0.0.1"
+dependencies = [
+ "tessera-phases",
+ "tessera-syntax",
+]
+
+[[package]]
+name = "tessera-mir"
+version = "0.0.1"
+dependencies = [
+ "tessera-phases",
+ "tessera-tir",
+]
+
+[[package]]
 name = "tessera-phases"
 version = "0.0.1"
+
+[[package]]
+name = "tessera-sema"
+version = "0.0.1"
+dependencies = [
+ "tessera-hir",
+ "tessera-phases",
+ "tessera-tir",
+]
 
 [[package]]
 name = "tessera-syntax"
@@ -702,6 +727,14 @@ dependencies = [
 [[package]]
 name = "tessera-tir"
 version = "0.0.1"
+
+[[package]]
+name = "tessera-tokenbench"
+version = "0.0.1"
+dependencies = [
+ "tessera-phases",
+ "tessera-syntax",
+]
 
 [[package]]
 name = "thin-vec"

@@ -1,0 +1,17 @@
+[package]
+name = "tessera-sema"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Name resolution and type/effect checking over HIR, and HIR to TIR lowering (contract B3-B5); see docs/architecture/compiler-phases.md"
+
+[lib]
+name = "tessera_sema"
+path = "src/lib.rs"
+
+[dependencies]
+tessera-phases = { path = "../tessera-phases" }
+tessera-hir = { path = "../tessera-hir" }
+tessera-tir = { path = "../tessera-tir" }

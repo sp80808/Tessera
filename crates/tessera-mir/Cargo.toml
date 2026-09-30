@@ -1,0 +1,16 @@
+[package]
+name = "tessera-mir"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Backend-neutral MIR/CFG and verifier (contract B6); lowers from TIR only"
+
+[lib]
+name = "tessera_mir"
+path = "src/lib.rs"
+
+[dependencies]
+tessera-phases = { path = "../tessera-phases" }
+tessera-tir = { path = "../tessera-tir" }
