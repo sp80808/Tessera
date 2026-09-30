@@ -1,0 +1,3 @@
+struct Buf{n:i64}
+eat:(b:Buf)>i64=b.n
+feed:(b:Buf)>i64=eat(b)

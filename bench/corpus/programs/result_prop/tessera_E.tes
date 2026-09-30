@@ -1,0 +1,2 @@
+f parse(x:i64)>Result<i64,()>=if x<0{Err(())}else{Ok(x)}
+f dbl(x:i64)>Result<i64,()>={let v=parse(x)?;Ok(v+v)}

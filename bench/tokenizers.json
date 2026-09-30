@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "tokenizers": [
+    {
+      "id": "openai/r50k_base",
+      "family": "gpt2-r50k",
+      "vendor": "OpenAI",
+      "loader": "tiktoken-embedded",
+      "embedded": {"crate": "tiktoken-rs", "encoding": "r50k_base"},
+      "file": null,
+      "notes": "GPT-2/GPT-3 base vocabulary (~50k). Old vocabulary: no dedicated whitespace-run tokens, so indented code is expensive."
+    },
+    {
+      "id": "openai/p50k_base",
+      "family": "codex-p50k",
+      "vendor": "OpenAI",
+      "loader": "tiktoken-embedded",
+      "embedded": {"crate": "tiktoken-rs", "encoding": "p50k_base"},
+      "file": null,
+      "notes": "Codex-era vocabulary: r50k plus whitespace-run tokens."
+    },
+    {
+      "id": "openai/cl100k_base",
+      "family": "gpt4-cl100k",
+      "vendor": "OpenAI",
+      "loader": "tiktoken-embedded",
+      "embedded": {"crate": "tiktoken-rs", "encoding": "cl100k_base"},
+      "file": null,
+      "notes": "GPT-3.5/GPT-4 vocabulary (~100k)."
+    },
+    {
+      "id": "openai/o200k_base",
+      "family": "gpt4o-o200k",
+      "vendor": "OpenAI",
+      "loader": "tiktoken-embedded",
+      "embedded": {"crate": "tiktoken-rs", "encoding": "o200k_base"},
+      "file": null,
+      "notes": "GPT-4o/GPT-4.1/GPT-5 vocabulary (~200k)."
+    },
+    {
+      "id": "qwen/qwen3-coder",
+      "family": "Qwen3-Coder",
+      "vendor": "Alibaba Qwen",
+      "loader": "hf-tokenizers-json",
+      "embedded": null,
+      "file": {
+        "repo_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        "hub_filename": "tokenizer.json",
+        "local_path": "qwen3-coder/tokenizer.json",
+        "sha256": null,
+        "revision": null,
+        "approx_size_mb": 11.0,
+        "hub_metadata_verified": false,
+        "license_note": "Believed Apache-2.0; confirm on the model card before downloading."
+      },
+      "notes": "Code-specialized Qwen3 tokenizer. Not downloaded: awaiting user approval; sha256 and revision are pinned at download time."
+    },
+    {
+      "id": "meta/llama-3.1",
+      "family": "Llama-3",
+      "vendor": "Meta",
+      "loader": "hf-tokenizers-json",
+      "embedded": null,
+      "file": {
+        "repo_id": "meta-llama/Llama-3.1-8B",
+        "hub_filename": "tokenizer.json",
+        "local_path": "llama-3.1/tokenizer.json",
+        "sha256": null,
+        "revision": null,
+        "approx_size_mb": 9.0,
+        "hub_metadata_verified": false,
+        "license_note": "Gated repository under the Llama 3.1 Community License: the user must accept the license on the hub before downloading."
+      },
+      "notes": "Llama-3-family vocabulary (~128k). Not downloaded: awaiting user approval and license acceptance."
+    },
+    {
+      "id": "deepseek/deepseek-coder-v2",
+      "family": "DeepSeek-Coder-V2",
+      "vendor": "DeepSeek",
+      "loader": "hf-tokenizers-json",
+      "embedded": null,
+      "file": {
+        "repo_id": "deepseek-ai/DeepSeek-Coder-V2-Lite-Base",
+        "hub_filename": "tokenizer.json",
+        "local_path": "deepseek-coder-v2/tokenizer.json",
+        "sha256": null,
+        "revision": null,
+        "approx_size_mb": 4.6,
+        "hub_metadata_verified": false,
+        "license_note": "Custom DeepSeek model license; read its terms before downloading."
+      },
+      "notes": "DeepSeek code-model tokenizer. Not downloaded: awaiting user approval; issue #1 makes this one conditional on licensing/tooling."
+    },
+    {
+      "id": "bigcode/starcoder2",
+      "family": "StarCoder2",
+      "vendor": "BigCode",
+      "loader": "hf-tokenizers-json",
+      "embedded": null,
+      "file": {
+        "repo_id": "bigcode/starcoder2-3b",
+        "hub_filename": "tokenizer.json",
+        "local_path": "starcoder2/tokenizer.json",
+        "sha256": null,
+        "revision": null,
+        "approx_size_mb": 2.0,
+        "hub_metadata_verified": false,
+        "license_note": "BigCode OpenRAIL-M model license; confirm on the model card before downloading."
+      },
+      "notes": "Code-specific tokenizer trained on source code (~49k). Not downloaded: awaiting user approval."
+    },
+    {
+      "id": "mistral/mistral-7b-v0.3",
+      "family": "Mistral",
+      "vendor": "Mistral AI",
+      "loader": "hf-tokenizers-json",
+      "embedded": null,
+      "file": {
+        "repo_id": "mistralai/Mistral-7B-v0.3",
+        "hub_filename": "tokenizer.json",
+        "local_path": "mistral-7b-v0.3/tokenizer.json",
+        "sha256": null,
+        "revision": null,
+        "approx_size_mb": 3.0,
+        "hub_metadata_verified": false,
+        "license_note": "Believed Apache-2.0 (the hub repository may be gated); confirm before downloading."
+      },
+      "notes": "Optional (docs/research/token-efficiency.md lists Mistral-family). Not downloaded: awaiting user approval."
+    }
+  ]
+}

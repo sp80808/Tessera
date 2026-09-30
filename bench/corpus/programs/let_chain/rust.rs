@@ -1,0 +1,5 @@
+fn calc(a: i64, b: i64) -> i64 {
+    let s = a + b;
+    let t = s * a;
+    t - b
+}
