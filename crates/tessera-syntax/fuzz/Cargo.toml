@@ -1,18 +1,18 @@
 [package]
 name = "tessera-syntax-fuzz"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
-rust-version.workspace = true
+version = "0.0.1"
+edition = "2024"
+license = "MIT OR Apache-2.0"
 publish = false
+
+[workspace]
+
+[lib]
+name = "fuzz_target"
+path = "fuzz_target.rs"
 
 [package.metadata]
 cargo-fuzz = true
-
-[[bin]]
-name = "fuzz_target"
-path = "fuzz_target.rs"
 
 [dependencies]
 tessera-syntax = { path = ".." }

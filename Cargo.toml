@@ -6,6 +6,9 @@ members = [
     "crates/tessera-tcap",
     "crates/tessera-cli",
 ]
+exclude = [
+    "crates/tessera-syntax/fuzz",
+]
 resolver = "3"
 
 [workspace.package]
