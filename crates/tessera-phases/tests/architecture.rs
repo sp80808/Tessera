@@ -262,6 +262,13 @@ fn no_crate_depends_on_network_or_model_clients() {
     }
 }
 
+/// An optional development/testing oracle (e.g. a Wolfram-backed `tess-oracle`)
+/// may consume compiler *outputs* (TIR text, MIR dumps, benchmark JSON) from
+/// outside the workspace, but no crate here may depend on one (INV-ORACLE-1).
+/// A future oracle crate must be registered in `LAYERS` explicitly and may then
+/// only depend on the read-only output crates, never the other way round.
+const ORACLE_MARKERS: &[&str] = &["wolfram", "mathematica", "wolframscript", "tess-oracle"];
+
 /// Source patterns forbidden in compiler-layer crates. Built with `concat!`
 /// so this file does not trip its own scan.
 fn forbidden_patterns() -> Vec<(&'static str, &'static str)> {
@@ -317,6 +324,33 @@ fn compiler_sources_are_pure_and_do_not_exit() {
             }
         }
     }
+}
+
+#[test]
+fn no_crate_depends_on_an_external_oracle() {
+    for krate in crates() {
+        for dep in &krate.deps {
+            assert!(
+                !ORACLE_MARKERS
+                    .iter()
+                    .any(|m| dep.to_lowercase().contains(m)),
+                "INV-ORACLE-1: `{}` depends on oracle/CAS crate `{dep}`; oracles consume outputs, they are never a dependency",
+                krate.name
+            );
+        }
+    }
+}
+
+#[test]
+fn oracle_markers_are_detected_in_manifest_text() {
+    let (_, deps) = parse_manifest(
+        "[package]\nname = \"x\"\n[dependencies]\nwolfram-app-descriptor = \"1\"\nserde = \"1\"\n",
+    );
+    let hits: Vec<_> = deps
+        .iter()
+        .filter(|d| ORACLE_MARKERS.iter().any(|m| d.to_lowercase().contains(m)))
+        .collect();
+    assert_eq!(hits, ["wolfram-app-descriptor"]);
 }
 
 #[test]
