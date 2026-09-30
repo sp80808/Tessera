@@ -667,6 +667,7 @@ name = "tessera-cli"
 version = "0.0.1"
 dependencies = [
  "tessera-db",
+ "tessera-phases",
  "tessera-syntax",
 ]
 
@@ -686,6 +687,7 @@ name = "tessera-syntax"
 version = "0.0.1"
 dependencies = [
  "criterion",
+ "tessera-phases",
  "tessera-tir",
 ]
 

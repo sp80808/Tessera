@@ -21,6 +21,7 @@ use tessera_tir::{TirExpr, TirFunction, TirParam};
 
 pub use tessera_tir::TirType;
 
+pub mod cst;
 pub mod lexer;
 
 // ---------- tokens ----------
@@ -78,7 +79,18 @@ fn lex(src: &str) -> Result<Vec<(Token, usize)>, SyntaxError> {
             TokenKind::Gt => Token::Gt,
             TokenKind::Eq => Token::Eq,
             TokenKind::Plus => Token::Plus,
-            TokenKind::Error => {
+            TokenKind::Error
+            | TokenKind::Minus
+            | TokenKind::Star
+            | TokenKind::Lt
+            | TokenKind::Bang
+            | TokenKind::Amp
+            | TokenKind::Dot
+            | TokenKind::Semi
+            | TokenKind::LBrace
+            | TokenKind::RBrace
+            | TokenKind::LBracket
+            | TokenKind::RBracket => {
                 return Err(SyntaxError::Unexpected {
                     at: tok.start,
                     want: "TC token",

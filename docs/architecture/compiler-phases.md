@@ -41,7 +41,7 @@ object / executable
 | # | Representation | Crate home | Issue | State today |
 |---|---|---|---|---|
 | B0 | `SourceText` | `tessera-db` (Salsa input) | #9 | exists (`SourceFile`) |
-| B1 | lossless CST | `tessera-syntax` | #18 | **lexer lossless (this change)**; tree/events *proposed* |
+| B1 | lossless CST | `tessera-syntax` | #18 | **lexer, parser events, lossless CST + recovery implemented** for the tiny grammar (`tessera_syntax::{lexer,cst}`); storage benchmark and typed AST facade pending |
 | B2 | normalized HIR | `tessera-hir` *(proposed)* | #19 | *proposed* (bootstrap `AstFunction` is a stand-in) |
 | B3 | resolved HIR | `tessera-sema` *(proposed)* | #20 | *proposed* |
 | B4 | typed/effect HIR | `tessera-sema` | #21 | *proposed* (bootstrap type checking lives inside `to_tir`) |
@@ -136,7 +136,7 @@ TIR is the point where **all** inferred semantic facts are written out (ADR 0001
 
 | Repr | Dump | Status |
 |---|---|---|
-| CST | `Kind start..end "text"` per token; nested/indented for nodes | tokens implemented (`lexer::dump`), tree *proposed* |
+| CST | `Kind start..end "text"` per token; indented nodes | implemented (`lexer::dump`, `ParsedFile::dump`) |
 | HIR / resolved / typed | S-expression, IDs printed as paths (`fn/add`, `local/a`), no spans inline; spans dumped in a separate `provenance:` section | *proposed* |
 | TIR | S-expression, every node typed (`.tir`) | implemented (`TirFunction::to_text`) |
 | MIR | textual CFG: blocks, statements, terminators; locals `_N` | *proposed* |
@@ -175,7 +175,7 @@ Each table answers the ten required questions in order: (1) responsibility, (2) 
 | Provenance | Trivially exact: node/token range **is** the provenance. |
 | Explicit/inferred | Only explicit syntax. Error recovery inserts explicit `Error`/`Missing` nodes; it does not guess intent. |
 | Consumers | HIR lowering (#19); formatter; editor tooling; parser tests. **Not** resolution, typing, TIR, MIR or the backend. |
-| Debug | Token dump (implemented, `lexer::dump`); tree dump (proposed). |
+| Debug | Token dump (`lexer::dump`) and tree dump (`ParsedFile::dump`), both golden-tested. |
 | Lowering precondition | (CST-1) concatenating all tokens equals the source; (CST-2) the parse returned a tree even for malformed input, with `diagnostics.has_errors()` describing it; (CST-3) parsing never panics or overflows the stack on any input (bounded nesting; enforced for the bootstrap parser by `hostile_nesting_returns_a_diagnostic_not_a_crash`); (CST-4) tree storage is replaceable without changing any HIR-facing API. |
 
 The surface grammar is *replaceable*: two different grammars must be able to lower to the same B2 output. Only `SyntaxKind` and the parser depend on the grammar. Candidate grammars in #1/#2 are fixtures that produce the same B2, which is exactly what the `surface_variation_does_not_change_semantic_result` style of test generalizes.
@@ -350,7 +350,7 @@ Deliberate non-goals: no `Phase` trait, no generic pipeline runner, no `Compiler
 
 | Gap | Where | Owner |
 |---|---|---|
-| G1 | `parse` is fail-fast `Result<AstFunction, SyntaxError>`; no CST, no recovery, first error only | #18 |
+| G1 | Legacy `parse` is still fail-fast (`Result<AstFunction, SyntaxError>`, first error only). The tolerant path exists (`cst::parse_file` → `PhaseOutput<ParsedFile>`); the AST should become a typed facade over the CST and `parse` a thin wrapper | #18 / #19 |
 | G2 | AST/TIR carry no spans; `to_tir` reports offset 0 for semantic errors (PROV-2) | #19 / #23 |
 | G3 | `tessera-syntax` depends on `tessera-tir` (bootstrap AST→TIR + `lower_to_tc`); CST crate must not know TIR. Recorded as `TEMPORARY(#19)` in `LAYERS` | #19 |
 | G4 | Bootstrap type checking and name resolution are fused inside `to_tir`; B3/B4 do not exist as phases | #20, #21 |
@@ -370,21 +370,38 @@ Input: `examples/bootstrap.tes`, exactly `f add(a:i64,b:i64)>i64=a+b` plus a tra
 FileId(0)  27 bytes: "f add(a:i64,b:i64)>i64=a+b\n"
 ```
 
-**B1 — CST.** Tokens **[real]** (verified by `lexer::tests::bootstrap_golden_token_stream`); node layer **[proposed]**, kind names provisional with the grammar:
+**B1 — CST [real]** (golden-tested by `cst::tests::bootstrap_golden_tree`; node kind names are provisional with the grammar):
 
 ```
-Ident 0..1 "f"   Whitespace 1..2 " "   Ident 2..5 "add"   LParen 5..6 "("
-Ident 6..7 "a"   Colon 7..8 ":"   Ident 8..11 "i64"   Comma 11..12 ","
-Ident 12..13 "b" Colon 13..14 ":"  Ident 14..17 "i64"  RParen 17..18 ")"
-Gt 18..19 ">"     Ident 19..22 "i64"   Eq 22..23 "="
-Ident 23..24 "a" Plus 24..25 "+"   Ident 25..26 "b"   Whitespace 26..27 "\n"
-
 File 0..27
-  Fn 0..26  ── children: f, ws, name "add", ParamList 5..18, Gt, RetTy 19..22, Eq, BinExpr 23..26
-    ParamList 5..18: Param 6..11 (a : i64), Comma, Param 12..17 (b : i64)
-    BinExpr 23..26: PathExpr 23..24, Plus 24..25, PathExpr 25..26
-  trailing Whitespace 26..27
+  Fn 0..26
+    Ident 0..1 "f"
+    Whitespace 1..2 " "
+    Ident 2..5 "add"
+    ParamList 5..18
+      LParen 5..6 "("
+      Param 6..11
+        Ident 6..7 "a"
+        Colon 7..8 ":"
+        TypeRef 8..11
+          Ident 8..11 "i64"
+      Comma 11..12 ","
+      Param 12..17 ...              (b : i64, same shape)
+      RParen 17..18 ")"
+    Gt 18..19 ">"
+    TypeRef 19..22
+      Ident 19..22 "i64"
+    Eq 22..23 "="
+    BinExpr 23..26
+      PathExpr 23..24
+        Ident 23..24 "a"
+      Plus 24..25 "+"
+      PathExpr 25..26
+        Ident 25..26 "b"
+  Whitespace 26..27 "\n"
 ```
+
+Trivia rule: leading/trailing trivia belongs to the enclosing node, so `Fn` spans `0..26` and the newline hangs off `File`. The tree for malformed input keeps the same shape with explicit nodes, e.g. `f x()>i64=` yields a zero-width `Missing 10..10` where the body should be plus one diagnostic `expected expression, found end of input`.
 
 Every byte is covered; the CST holds no meaning for `add`, `i64`, `a` or `+`.
 

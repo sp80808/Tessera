@@ -27,7 +27,22 @@ pub enum TokenKind {
     Gt,
     Eq,
     Plus,
-    /// One character the grammar does not recognize.
+    // Provisional punctuation lexicon: recognized so diagnostics can name it,
+    // NOT accepted by any grammar. Multi-character operators (`==`, `->`, `&&`)
+    // are deliberately absent: they are grammar decisions (#1/#2) and are
+    // formed by the parser from adjacent single-character tokens.
+    Minus,
+    Star,
+    Lt,
+    Bang,
+    Amp,
+    Dot,
+    Semi,
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+    /// One character the lexicon does not recognize.
     Error,
 }
 
@@ -36,6 +51,63 @@ impl TokenKind {
     #[must_use]
     pub const fn is_trivia(self) -> bool {
         matches!(self, Self::Whitespace | Self::LineComment)
+    }
+
+    /// Every kind, in declaration order (used by the lexicon-register test).
+    pub const ALL: [TokenKind; 23] = [
+        Self::Whitespace,
+        Self::LineComment,
+        Self::Ident,
+        Self::Int,
+        Self::Colon,
+        Self::Comma,
+        Self::LParen,
+        Self::RParen,
+        Self::Gt,
+        Self::Eq,
+        Self::Plus,
+        Self::Minus,
+        Self::Star,
+        Self::Lt,
+        Self::Bang,
+        Self::Amp,
+        Self::Dot,
+        Self::Semi,
+        Self::LBrace,
+        Self::RBrace,
+        Self::LBracket,
+        Self::RBracket,
+        Self::Error,
+    ];
+
+    /// Human description for diagnostics ("expected X, found Y").
+    #[must_use]
+    pub const fn describe(self) -> &'static str {
+        match self {
+            Self::Whitespace => "whitespace",
+            Self::LineComment => "comment",
+            Self::Ident => "identifier",
+            Self::Int => "integer",
+            Self::Colon => "`:`",
+            Self::Comma => "`,`",
+            Self::LParen => "`(`",
+            Self::RParen => "`)`",
+            Self::Gt => "`>`",
+            Self::Eq => "`=`",
+            Self::Plus => "`+`",
+            Self::Minus => "`-`",
+            Self::Star => "`*`",
+            Self::Lt => "`<`",
+            Self::Bang => "`!`",
+            Self::Amp => "`&`",
+            Self::Dot => "`.`",
+            Self::Semi => "`;`",
+            Self::LBrace => "`{`",
+            Self::RBrace => "`}`",
+            Self::LBracket => "`[`",
+            Self::RBracket => "`]`",
+            Self::Error => "unrecognized character",
+        }
     }
 
     #[must_use]
@@ -52,6 +124,17 @@ impl TokenKind {
             Self::Gt => "Gt",
             Self::Eq => "Eq",
             Self::Plus => "Plus",
+            Self::Minus => "Minus",
+            Self::Star => "Star",
+            Self::Lt => "Lt",
+            Self::Bang => "Bang",
+            Self::Amp => "Amp",
+            Self::Dot => "Dot",
+            Self::Semi => "Semi",
+            Self::LBrace => "LBrace",
+            Self::RBrace => "RBrace",
+            Self::LBracket => "LBracket",
+            Self::RBracket => "RBracket",
             Self::Error => "Error",
         }
     }
@@ -110,6 +193,17 @@ pub fn lex(src: &str) -> Vec<Token> {
                 b'>' => Some(TokenKind::Gt),
                 b'=' => Some(TokenKind::Eq),
                 b'+' => Some(TokenKind::Plus),
+                b'-' => Some(TokenKind::Minus),
+                b'*' => Some(TokenKind::Star),
+                b'<' => Some(TokenKind::Lt),
+                b'!' => Some(TokenKind::Bang),
+                b'&' => Some(TokenKind::Amp),
+                b'.' => Some(TokenKind::Dot),
+                b';' => Some(TokenKind::Semi),
+                b'{' => Some(TokenKind::LBrace),
+                b'}' => Some(TokenKind::RBrace),
+                b'[' => Some(TokenKind::LBracket),
+                b']' => Some(TokenKind::RBracket),
                 _ => None,
             };
             if let Some(kind) = punct {
@@ -280,5 +374,24 @@ Whitespace 26..27 \"\\n\"
             let bytes: Vec<u8> = (0..len).map(|_| rng.next().to_le_bytes()[0]).collect();
             assert_lossless(&String::from_utf8_lossy(&bytes));
         }
+    }
+
+    #[test]
+    fn provisional_punctuation_lexes_as_single_char_tokens() {
+        let src = "-*<!&.;{}[]";
+        let kinds: Vec<_> = lex(src).iter().map(|t| t.kind).collect();
+        assert_eq!(kinds.len(), src.len());
+        assert!(!kinds.contains(&TokenKind::Error));
+        // multi-char operators are NOT lexemes: `->` is two tokens
+        let arrow: Vec<_> = lex("->").iter().map(|t| t.kind).collect();
+        assert_eq!(arrow, [TokenKind::Minus, TokenKind::Gt]);
+    }
+
+    #[test]
+    fn all_lists_every_kind_once() {
+        let mut names: Vec<_> = TokenKind::ALL.iter().map(|k| k.name()).collect();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(names.len(), TokenKind::ALL.len());
     }
 }

@@ -15,6 +15,7 @@ name = "tessera_syntax_bench"
 harness = false
 
 [dependencies]
+tessera-phases = { path = "../tessera-phases" }
 tessera-tir = { path = "../tessera-tir" }
 
 [dev-dependencies]
