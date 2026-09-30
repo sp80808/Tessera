@@ -323,7 +323,10 @@ fn lower_function(
         diags.push(Diagnostic::error(
             Phase::Mir,
             "E-mir-internal",
-            format!("function `{}`: internal lowering error: {problem}", func.name),
+            format!(
+                "function `{}`: internal lowering error: {problem}",
+                func.name
+            ),
             func_prov,
         ));
     }
