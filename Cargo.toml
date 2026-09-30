@@ -1,7 +1,13 @@
 [workspace]
 members = [
     "crates/tessera-db",
+    "crates/tessera-syntax",
+    "crates/tessera-tir",
+    "crates/tessera-tcap",
     "crates/tessera-cli",
+]
+exclude = [
+    "crates/tessera-syntax/fuzz",
 ]
 resolver = "3"
 
@@ -14,3 +20,4 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 salsa = "=0.28.5"
+criterion = "0.5"

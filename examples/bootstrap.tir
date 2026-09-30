@@ -1,0 +1,1 @@
+(func add (param a i64) (param b i64) (return i64) (body (add i64 (var a i64) (var b i64))))

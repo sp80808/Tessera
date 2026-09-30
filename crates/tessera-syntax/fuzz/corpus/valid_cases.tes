@@ -1,0 +1,15 @@
+f id(x:i64)>i64=x
+f zero()>i64=42
+f sum(a:i64,b:i64,c:i64)>i64=a+b+c
+f nested(a:i64,b:i64)>i64=(a+b)+1
+f large(a:i64)>i64=1+2+3+4+5+6+7+8+9+10
+f deep(a:i64)>i64=((((1))))
+f max_i64(x:i64)>i64=9223372036854775807
+f min_i64(x:i64)>i64=-9223372036854775808
+f with_spaces( a:i64 , b:i64 ) > i64 = a + b
+// leading comment
+f commented(a:i64,b:i64)>i64=a+b // trailing comment
+f single_param(x:i64)>i64=x+1
+f many_params(a:i64,b:i64,c:i64,d:i64)>i64=a+b+c+d
+f reuse_var(x:i64)>i64=x+x
+f complex(a:i64,b:i64)>i64=(a+b)+(a+1)

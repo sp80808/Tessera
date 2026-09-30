@@ -1,0 +1,21 @@
+[package]
+name = "tessera-syntax"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "tessera_syntax"
+path = "src/lib.rs"
+
+[[bench]]
+name = "tessera_syntax_bench"
+harness = false
+
+[dependencies]
+tessera-tir = { path = "../tessera-tir" }
+
+[dev-dependencies]
+criterion = { workspace = true }

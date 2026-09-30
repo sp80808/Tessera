@@ -1,15 +1,15 @@
 [package]
-name = "tessera-cli"
+name = "tessera-tcap"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 
-[[bin]]
-name = "tsr"
-path = "src/main.rs"
+[lib]
+name = "tessera_tcap"
+path = "src/lib.rs"
 
 [dependencies]
-tessera-db = { path = "../tessera-db" }
-tessera-syntax = { path = "../tessera-syntax" }
+tessera-tir = { path = "../tessera-tir" }
+thiserror = "1.0"

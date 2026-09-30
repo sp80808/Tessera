@@ -16,3 +16,8 @@ coverage/
 *.db
 .beads-credential-key
 .beads/proxieddb/
+
+# cargo-fuzz standalone crate output
+crates/*/fuzz/target/
+crates/*/fuzz/corpus/
+crates/*/fuzz/artifacts/
