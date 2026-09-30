@@ -17,7 +17,8 @@
 use std::fmt;
 
 use ast::AstSpans;
-use tessera_tir::{TirExpr, TirFunction, TirParam};
+use tessera_phases::{Provenance, ProvenanceMap};
+use tessera_tir::{FunctionProvenance, TirExpr, TirFunction, TirNodeId, TirParam};
 
 pub use tessera_tir::TirType;
 
@@ -134,11 +135,14 @@ impl std::error::Error for SyntaxError {}
 /// Provisional recursion bound for parenthesized expressions.
 pub const MAX_NESTING: usize = 128;
 
-/// Provisional bound on expression *tree* depth (paren nesting plus the length
-/// of a left-leaning `+` chain). The bootstrap AST/TIR and their consumers
-/// (formatter, lowering, `Drop`) are recursive, so unbounded depth would
-/// overflow the stack; exceeding it is a diagnostic. Revisit when #19 moves to
-/// arena-based HIR.
+/// Provisional bound on expression *tree* depth: the number of `+` and
+/// parenthesis levels on the deepest root-to-leaf path (a leaf counts 0), so
+/// `a+b+c` has depth 2 and `(a+b)+c` depth 3. It is measured over the whole
+/// path, not per parenthesis level: chains nested inside the left operand of
+/// other chains add up. The bootstrap AST/TIR and their consumers (formatter,
+/// lowering, `Drop`) are recursive, so unbounded depth would overflow the
+/// stack; exceeding it is a diagnostic. Revisit when #19 moves to arena-based
+/// HIR.
 pub const MAX_EXPR_DEPTH: usize = 1000;
 
 // ---------- lowering (AST -> TIR: every inferred type made explicit) ----------
@@ -205,6 +209,32 @@ pub fn to_tir(func: &AstFunction, spans: &AstSpans) -> Result<TirFunction, Synta
         ret: func.ret,
         body: lower_expr(&func.body, &func.params, spans, &mut 0)?,
     })
+}
+
+/// Provenance of the TIR that [`to_tir`] builds from an AST with these spans.
+///
+/// `to_tir` makes exactly one TIR node per AST expression, in the same
+/// pre-order, so `TirNodeId(i)` comes from `spans.exprs[i]`; a parameter's
+/// provenance covers `name:type`. Part of the TEMPORARY(#19) bootstrap bridge,
+/// like `to_tir` itself: the HIR/sema path will own this mapping.
+#[must_use]
+pub fn tir_provenance(spans: &AstSpans) -> FunctionProvenance {
+    let mut nodes = ProvenanceMap::new();
+    for (i, span) in spans.exprs.iter().enumerate() {
+        nodes.insert(
+            TirNodeId(u32::try_from(i).unwrap_or(u32::MAX)),
+            Provenance::Source(*span),
+        );
+    }
+    FunctionProvenance {
+        func: Provenance::Source(spans.func),
+        params: spans
+            .params
+            .iter()
+            .map(|p| Provenance::Source(p.name.cover(p.ty).unwrap_or(p.name)))
+            .collect(),
+        nodes,
+    }
 }
 
 /// Parse one TC function with its span table. Whitespace and `//` comments
@@ -551,6 +581,44 @@ mod tests {
         );
     }
 
+    /// The bridge's provenance is total and each TIR node points at the TC
+    /// text of the expression it came from.
+    #[test]
+    fn tir_provenance_is_total_and_exact() {
+        for (input, _) in CORPUS {
+            let (func, spans) = parse_with_spans(input).expect("parses");
+            let tir = to_tir(&func, &spans).expect("lowers");
+            let prov = tir_provenance(&spans);
+            assert!(prov.missing(&tir).is_empty(), "{input:?}");
+            assert_eq!(prov.nodes.iter().count(), tir.nodes().len(), "{input:?}");
+            assert_eq!(prov.params.len(), tir.params.len());
+        }
+        let src = "f n(a:i64,b:i64)>i64=(a+b)+1";
+        let (func, spans) = parse_with_spans(src).expect("parses");
+        let tir = to_tir(&func, &spans).expect("lowers");
+        let prov = tir_provenance(&spans);
+        let text = |p: Provenance| {
+            let s = p.primary_span();
+            &src[s.start as usize..s.end as usize]
+        };
+        let got: Vec<_> = tir
+            .nodes()
+            .iter()
+            .map(|(id, e)| (e.op_name(), text(prov.nodes.get(*id).expect("total"))))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("add", "(a+b)+1"),
+                ("add", "a+b"),
+                ("var", "a"),
+                ("var", "b"),
+                ("int", "1")
+            ]
+        );
+        assert_eq!(text(prov.params[1]), "b:i64");
+    }
+
     /// Formatting changes (whitespace, comments, redundant parens) must not
     /// change the semantic result: the same TIR comes out.
     #[test]
@@ -744,6 +812,55 @@ mod tests {
         let hostile = format!("f c(a:i64)>i64={}", vec!["a"; 1_000_000].join("+"));
         assert!(matches!(
             parse(&hostile),
+            Err(SyntaxError::NestingTooDeep { .. })
+        ));
+    }
+
+    /// `a+a+…` of `links` links, as the left operand of an enclosing chain.
+    fn left_nested(levels: &[usize]) -> String {
+        let mut e = "a".to_owned();
+        for (i, &links) in levels.iter().enumerate() {
+            if i > 0 {
+                e = format!("({e})");
+            }
+            e.push_str(&"+a".repeat(links));
+        }
+        format!("f c(a:i64)>i64={e}")
+    }
+
+    /// Regression: the depth budget used to reset at every parenthesis level
+    /// (`paren depth + links of this chain`), so chains nested in the left
+    /// operand of other chains built ASTs ~120x deeper than `MAX_EXPR_DEPTH`
+    /// and `tsr fmt`/`tsr tir` aborted with a stack overflow on a 240 KB file
+    /// while `tsr check` called it clean.
+    #[test]
+    fn left_nested_chains_count_against_one_depth_budget() {
+        // 128 levels, each a near-maximal chain: ~120k deep before the fix.
+        let levels: Vec<usize> = (0..MAX_NESTING).map(|d| MAX_EXPR_DEPTH - d - 1).collect();
+        let hostile = left_nested(&levels);
+        assert!(matches!(
+            parse(&hostile),
+            Err(SyntaxError::NestingTooDeep { .. })
+        ));
+        assert!(fmt(&hostile).is_err());
+        assert!(expand(&hostile).is_err());
+        let out = cst::parse_file(tessera_phases::FileId(0), &hostile);
+        assert_eq!(out.diagnostics.len(), 1, "reported once, no cascade");
+
+        // Exactly at the limit through the same shape: 499 + 1 (parens) + 500.
+        let at_limit = left_nested(&[499, 500]);
+        let canonical = fmt(&at_limit).expect("depth == MAX_EXPR_DEPTH is accepted");
+        assert_eq!(fmt(&canonical).as_deref(), Ok(canonical.as_str()));
+        let tir = expand(&at_limit).expect("expands");
+        let module = tessera_tir::TirModule::parse(&tir).expect("TIR reader accepts it");
+        assert_eq!(module.to_text(), tir);
+        // One more link anywhere on the deepest path is over the limit.
+        assert!(matches!(
+            parse(&left_nested(&[499, 501])),
+            Err(SyntaxError::NestingTooDeep { .. })
+        ));
+        assert!(matches!(
+            parse(&left_nested(&[500, 500])),
             Err(SyntaxError::NestingTooDeep { .. })
         ));
     }

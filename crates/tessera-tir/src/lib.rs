@@ -4,7 +4,7 @@
 //! literal types, result types) is written out on every node. Nothing here is
 //! canonical source; TIR is always derived from TC. Where TC can spell a TIR
 //! program, lowering back yields the canonical TC spelling (see
-//! `tessera_sema::lower_to_tc`); where it cannot, lowering says so.
+//! `tessera_syntax::lower_to_tc`); where it cannot, lowering says so.
 //!
 //! Textual form is a boring S-expression (`.tir` files), one `(func ...)` per
 //! function, e.g.
@@ -26,8 +26,9 @@
 
 use std::fmt;
 
-use tessera_phases::{Provenance, ProvenanceMap};
+use tessera_phases::{FileId, Provenance, ProvenanceMap};
 
+pub mod eval;
 mod parse;
 mod verify;
 
@@ -407,7 +408,18 @@ impl TirModule {
     /// [`MAX_TIR_DEPTH`]. Well-formedness (types, scopes, calls) is *not*
     /// checked here; use [`verify_module`].
     pub fn parse(text: &str) -> Result<TirModule, TirParseError> {
-        parse::parse_module(text)
+        parse::parse_module(FileId(0), text).map(|(module, _)| module)
+    }
+
+    /// [`Self::parse`], also returning where each function, parameter and body
+    /// node sits in `text` (file `file`): every span covers its whole
+    /// parenthesized form. The table is total (PROV-1), so a hand-written
+    /// `.tir` file can be lowered with diagnostics that point into it.
+    pub fn parse_with_provenance(
+        file: FileId,
+        text: &str,
+    ) -> Result<(TirModule, ModuleProvenance), TirParseError> {
+        parse::parse_module(file, text)
     }
 }
 
@@ -571,6 +583,36 @@ mod tests {
             nodes,
         };
         assert_eq!(prov.missing(&f), vec![TirNodeId(2)]);
+    }
+
+    /// `.tir` provenance is total and each span is the node's whole form.
+    #[test]
+    fn parsed_provenance_is_total_and_points_at_each_form() {
+        let text = "; header\n(func add (param a i64) (param b i64) (return i64)\n  (body (add i64 (var a i64) (var b i64))))";
+        let (m, prov) =
+            TirModule::parse_with_provenance(tessera_phases::FileId(3), text).expect("parses");
+        assert_eq!(m, TirModule::parse(text).expect("same module"));
+        let fp = &prov.funcs[0];
+        assert!(fp.missing(&m.funcs[0]).is_empty());
+        let at = |p: Provenance| {
+            let s = p.primary_span();
+            assert_eq!(s.file, tessera_phases::FileId(3));
+            &text[s.start as usize..s.end as usize]
+        };
+        assert!(at(fp.func).starts_with("(func add") && at(fp.func).ends_with("))))"));
+        assert_eq!(
+            fp.params.iter().map(|p| at(*p)).collect::<Vec<_>>(),
+            ["(param a i64)", "(param b i64)"]
+        );
+        let nodes: Vec<_> = fp.nodes.iter().map(|(_, p)| at(p)).collect();
+        assert_eq!(
+            nodes,
+            [
+                "(add i64 (var a i64) (var b i64))",
+                "(var a i64)",
+                "(var b i64)"
+            ]
+        );
     }
 
     #[test]

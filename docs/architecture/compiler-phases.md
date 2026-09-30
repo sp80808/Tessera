@@ -41,14 +41,14 @@ object / executable
 | # | Representation | Crate home | Issue | State today |
 |---|---|---|---|---|
 | B0 | `SourceText` | `tessera-db` (Salsa input) | #9 | exists (`SourceFile`) |
-| B1 | lossless CST | `tessera-syntax` | #18 | **lexer, parser events, lossless CST + recovery implemented** for the tiny grammar (`tessera_syntax::{lexer,cst}`); storage benchmark and typed AST facade pending |
-| B2 | normalized HIR | `tessera-hir` *(proposed)* | #19 | *proposed* (bootstrap `AstFunction` is a stand-in) |
-| B3 | resolved HIR | `tessera-sema` *(proposed)* | #20 | *proposed* |
+| B1 | lossless CST | `tessera-syntax` | #18 | **lexer, parser events, lossless CST + recovery implemented** for the tiny grammar (`tessera_syntax::{lexer,cst}`), plus the typed AST facade with a span side table (`tessera_syntax::ast`); storage benchmark pending |
+| B2 | normalized HIR | `tessera-hir` | #19 | **CST -> HIR lowering, IDs, provenance tables and dump implemented** for the bootstrap grammar; not yet consumed by any later phase (TC reaches TIR through the bootstrap bridge, G3/G4) |
+| B3 | resolved HIR | `tessera-sema` | #20 | *proposed* (crate scaffold only; its HIR input check `input.rs` is not wired yet, G10) |
 | B4 | typed/effect HIR | `tessera-sema` | #21 | *proposed* (bootstrap type checking lives inside `to_tir`) |
-| B5 | TIR | `tessera-tir` | #2/#21 | provisional, exists (single function, `i64` + `+`) |
-| B6 | MIR / CFG | `tessera-mir` *(proposed)* | #22 | *proposed* |
+| B5 | TIR | `tessera-tir` | #2/#21 | **TIR v0.1 implemented**: `let`/`if`/`call`/`bool` nodes, standalone reader (with provenance into `.tir` text) and verifier, provenance side table, and a reference evaluator (`tessera_tir::eval`) that defines what TIR means. TC reaches only the `i64` + `+` subset |
+| B6 | MIR / CFG | `tessera-mir` | #22 | **implemented**: lowering from TIR alone, verifier (incl. definite-initialization dataflow), text dump, reference interpreter; differential-tested against the TIR evaluator |
 | B7 | backend IR | `tessera-codegen-cranelift` *(proposed)* | #4 | *proposed* |
-| B8 | object / link | driver (`tessera-cli`) | #24 | *proposed* |
+| B8 | object / link | driver (`tessera-cli`) | #24 | *proposed* (the driver can already lower to MIR and run it on the interpreter: `tsr mir`, `tsr run`) |
 
 Crate names for proposed crates are defaults recorded in the `LAYERS` table of the architecture test; the issue that creates them may change the name but must update the table and this document.
 
@@ -139,7 +139,7 @@ TIR is the point where **all** inferred semantic facts are written out (ADR 0001
 | CST | `Kind start..end "text"` per token; indented nodes | implemented (`lexer::dump`, `ParsedFile::dump`) |
 | HIR / resolved / typed | S-expression, IDs printed as paths (`fn/add`, `local/a`), no spans inline; spans dumped in a separate `provenance:` section | *proposed* |
 | TIR | S-expression, every node typed (`.tir`) | implemented (`TirFunction::to_text`) |
-| MIR | textual CFG: blocks, statements, terminators; locals `_N` | *proposed* |
+| MIR | textual CFG: blocks, statements, terminators; locals `_N`; provenance per line | implemented (`tessera_mir::dump`, `tsr mir`) |
 | Backend IR | not a compiler contract (backend-private) | n/a |
 
 Only **TIR text** is a public, versioned artifact (it is what tools and models read). Everything else is internal and may change without notice; internal dumps are snapshot-tested and their format changes are ordinary diffs.
@@ -176,7 +176,7 @@ Each table answers the ten required questions in order: (1) responsibility, (2) 
 | Explicit/inferred | Only explicit syntax. Error recovery inserts explicit `Error`/`Missing` nodes; it does not guess intent. |
 | Consumers | HIR lowering (#19); formatter; editor tooling; parser tests. **Not** resolution, typing, TIR, MIR or the backend. |
 | Debug | Token dump (`lexer::dump`) and tree dump (`ParsedFile::dump`), both golden-tested. |
-| Lowering precondition | (CST-1) concatenating all tokens equals the source; (CST-2) the parse returned a tree even for malformed input, with `diagnostics.has_errors()` describing it; (CST-3) parsing and every recursive consumer never panic or overflow the stack on any input: parenthesis nesting is bounded by `MAX_NESTING` and total expression depth (nesting + `+`-chain length) by `MAX_EXPR_DEPTH`, both provisional, exceeding either is one diagnostic (enforced by `hostile_nesting_returns_a_diagnostic_not_a_crash`, `deepest_accepted_and_hostile_chains_never_overflow_the_stack`, `long_addition_chains_are_bounded_and_linear`); (CST-4) tree storage is replaceable without changing any HIR-facing API. |
+| Lowering precondition | (CST-1) concatenating all tokens equals the source; (CST-2) the parse returned a tree even for malformed input, with `diagnostics.has_errors()` describing it; (CST-3) parsing and every recursive consumer never panic or overflow the stack on any input: parenthesis nesting is bounded by `MAX_NESTING` and expression tree depth (`+` and parenthesis levels on the deepest root-to-leaf path, summed across nesting levels) by `MAX_EXPR_DEPTH`, both provisional, exceeding either is one diagnostic (enforced by `hostile_nesting_returns_a_diagnostic_not_a_crash`, `deepest_accepted_and_hostile_chains_never_overflow_the_stack`, `long_addition_chains_are_bounded_and_linear`, `left_nested_chains_count_against_one_depth_budget`); (CST-4) tree storage is replaceable without changing any HIR-facing API. |
 
 The surface grammar is *replaceable*: two different grammars must be able to lower to the same B2 output. Only `SyntaxKind` and the parser depend on the grammar. Candidate grammars in #1/#2 are fixtures that produce the same B2, which is exactly what the `surface_variation_does_not_change_semantic_result` style of test generalizes.
 
@@ -338,28 +338,36 @@ Deliberate non-goals: no `Phase` trait, no generic pipeline runner, no `Compiler
 | INV-DIAG-1 | No `process::exit` in any crate | **test** `compiler_sources_are_pure_and_do_not_exit` |
 | INV-SALSA-1 | No `static mut` / `thread_local!` / lazy mutable globals / wall clock | **test** (same) |
 | LEX-1..3 | Lexer covers every byte, trivia explicit, never fails or panics | **test** `lexer::tests::*` (edge cases + 25k random inputs) |
-| CST-3 | Parser cannot overflow the stack on hostile nesting | **test** `hostile_nesting_returns_a_diagnostic_not_a_crash`, `frontend_never_panics_on_arbitrary_text` |
+| CST-3 | Parser cannot overflow the stack on hostile nesting | **test** `hostile_nesting_returns_a_diagnostic_not_a_crash`, `frontend_never_panics_on_arbitrary_text`, `left_nested_chains_count_against_one_depth_budget` |
 | INV-ID-2 | Surface variation does not change the semantic result | **test** `surface_variation_does_not_change_semantic_result` (bootstrap subset) |
 | DET-1 | Expansion and diagnostic order are deterministic | **test** `expansion_is_deterministic`; `DiagnosticSet` order test |
 | TIR-3 | TC→TIR→TC round trip is exact on the bootstrap subset | **test** `tc_tir_tc_round_trip_is_byte_exact`, golden fixtures |
 | PROV-1 | Provenance total per phase | mechanism **tested** (`ProvenanceMap::missing`); applied per phase by #19–#22 |
 | PROV-2 | Spans survive lowering | **partly enforced**: CST→AST spans exact (`ast_spans_are_exact_for_the_bootstrap_fixture`), AST→TIR errors keep offsets (`semantic_errors_keep_their_source_offset`); TIR nodes carry no provenance yet (G2) |
 | INV-ID-2 (AST level) | Reformatting changes spans, never the AST | **test** `reformatting_changes_spans_but_not_the_ast` |
-| CST-1/2/4, HIR-*, RES-*, TYP-*, TIR-1/2/4/5, MIR-*, BE-* | as specified in §3 | planned with the owning issue (#18–#22, #4) |
+| TIR-2 | A hand-written `.tir` file can be verified and lowered without B1–B4 | **test** `tessera-cli/tests/cli.rs::run_handwritten_tir_with_calls_and_branches`, `ill_typed_tir_points_into_the_tir_file` |
+| TIR-4 | TIR provenance is total | **test** `parsed_provenance_is_total_and_points_at_each_form` (`.tir` input), `tir_provenance_is_total_and_exact` (TC bridge) |
+| TIR-5 | MIR preserves TIR semantics ("what you read is what runs") | **test** `tessera-mir/tests/differential.rs`: TIR evaluator vs MIR interpreter on random well-typed modules, both overflow modes; injected lowering bugs are caught |
+| MIR-1/2 | Verifier: targets, terminators, types, calls, definite initialization, provenance | **test** `verifier_names_each_broken_rule_and_nothing_downstream_panics` (one case per rule), `initialization_analysis_handles_loops` |
+| MIR-1 (soundness) | Verified MIR never fails a dynamic check of the interpreter | **test** `verified_mir_never_trips_the_interpreters_dynamic_checks` (random mutations) |
+| INV-BUILD-1 | Every `.rs` file under `src/` is declared as a module (compiled, linted, tested) | **test** `architecture.rs::every_source_file_is_declared_as_a_module`, with an explicit, self-expiring `KNOWN_UNWIRED` list |
+| CST-1/2/4, HIR-*, RES-*, TYP-*, TIR-1, MIR-3, BE-* | as specified in §3 | planned with the owning issue (#18–#21, #4) |
 
 ### Known gaps between current code and this contract
 
 | Gap | Where | Owner |
 |---|---|---|
 | G1 | *(mostly closed)* `parse` is now a thin wrapper over the tolerant CST via the `ast` facade (first diagnostic → legacy `SyntaxError`); the fail-fast parser survives only as a `#[cfg(test)]` differential oracle (`legacy.rs`). `SyntaxError` itself is still the legacy shape | #23 |
-| G2 | TIR nodes carry no provenance/origin link; AST spans exist only as the `AstSpans` side table (pre-order index), not as stable IDs | #19 / #21 |
+| G2 | *(partly closed)* TIR provenance is a side table keyed by pre-order `TirNodeId` (`FunctionProvenance`), filled from `.tir` text by the reader and from TC by the bootstrap bridge `tir_provenance`; TIR nodes have no link to a B4 `ExprId` yet because B4 does not exist | #19 / #21 |
 | G3 | `tessera-syntax` depends on `tessera-tir` (bootstrap AST→TIR + `lower_to_tc`); CST crate must not know TIR. Recorded as `TEMPORARY(#19)` in `LAYERS` | #19 |
 | G4 | Bootstrap type checking and name resolution are fused inside `to_tir`; B3/B4 do not exist as phases | #20, #21 |
-| G5 | `lower_to_tc` maps TIR `Bool`/`Eq`/`And`/`Not` onto `Int`/`Add` (`strip_types`); those TIR nodes are unreachable from the grammar. Round-trip claim holds only for the `i64` + `+` subset | #21 / #2 |
+| G5 | *(closed)* `lower_to_tc` is fallible and reports what TC cannot spell instead of approximating it (`lower_to_tc_refuses_what_tc_cannot_spell`) | — |
 | G6 | `SyntaxError { at: usize }` is not a `phases::Diagnostic` | #23 |
 | G7 | `tessera-db` exposes only stats queries (`byte_len`, `line_count`, `source_units`), no `parse` query | #9 |
-| G8 | `tsr` has no `check` command; CLI calls the frontend directly | #24 |
+| G8 | *(mostly closed)* `tsr check` (syntax), `tsr mir` and `tsr run` exist; the CLI still calls phases directly rather than through `tessera-db` queries | #24 |
 | G9 | Syntax fuzz crate has several `fuzz_target!`s in a `[lib]`; not runnable with `cargo fuzz run`. Property tests in-tree cover panic-freedom on stable meanwhile | #18 |
+| G10 | `tessera-sema/src/input.rs` is not declared as a module: no `resolve` calls it yet, so it is dead code. Allow-listed in `KNOWN_UNWIRED` (INV-BUILD-1), which fails once it is wired so the entry cannot go stale | #20 |
+| G11 | MIR stores provenance inline on statements/terminators (`ir.rs`: "MIR ids are not stable across edits anyway"), which departs from PROV-3 and from the §8 cutoff row "equal MIR ⇒ codegen skip": a text-moving edit changes MIR values. Harmless while nothing caches MIR; decide (side table vs. accept) when the `mir(fn)`/`codegen` queries exist | #9 / #22 |
 
 ## 7. Worked witness
 
@@ -451,13 +459,17 @@ All inferred facts appear here; provenance is unchanged.
 
 Nothing inferred remains: the literal-free body still spells the type on every node. Intended origin links: `(add …)` → e2 `[23..26)`, `(var a …)` → e0 `[23..24)`, `(var b …)` → e1 `[25..26)`.
 
-**B6 — MIR / CFG [proposed]**
+**B6 — MIR / CFG [real]** (output of `tsr mir --overflow=trapping examples/bootstrap.tes`; the overflow mode is a required flag until O1 is decided):
 
 ```
-fn add(_1: i64, _2: i64) -> i64 {          ; provenance: fn/add [0..26) Source
-  bb0:
-    _0 = Add(_1, _2)     ; overflow=<decided by O1>   [23..26) Source (e2)
-    return               ; [23..26) Synthesized{ origin: e2, why: "implicit-return" }
+fn add(_1: i64, _2: i64) -> i64 {  // #0 src 0:0..26
+    let _0: i64;  // return
+    let _1: i64;  // param a
+    let _2: i64;  // param b
+    bb0: {
+        _0 = Add.trapping(copy _1, copy _2);  // src 0:23..26
+        return;  // synth(implicit-return) 0:23..26
+    }
 }
 ```
 
@@ -492,7 +504,7 @@ Requirements this document places on #9: every output above is a pure value with
 
 ## 9. Open questions (not decided here)
 
-- **O1 — integer overflow semantics.** `a+b` on `i64` has no specified overflow behavior yet. B4 marks it `UNSPECIFIED` and B6 requires it explicit. Decide in the semantics/spec before #22 lowers arithmetic. This is a *language* decision, not a phase-contract one.
+- **O1 — integer overflow semantics.** `a+b` on `i64` has no specified overflow behavior yet. B4 marks it `UNSPECIFIED` and B6 requires it explicit. Decide in the semantics/spec before #22 lowers arithmetic. This is a *language* decision, not a phase-contract one. *Status:* still open. Until it is decided nothing picks a default: MIR states a mode on every `Add` from `LowerOptions`, the TIR evaluator takes `EvalOptions::overflow`, and `tsr mir`/`tsr run` require `--overflow=wrapping|trapping`; the differential tests cover both modes.
 - **O2 — where non-lexical borrow shortening runs.** If it needs a CFG, ownership analysis for that step moves from B4 to B6; the `OwnershipFacts` side-table design keeps both options open (§5).
 - **O3 — is TIR complete enough to lower loops/branches without re-reading B4?** The decision to lower MIR from TIR alone (TIR-5) is what guarantees "what you read is what runs". If TIR cannot express control flow without becoming a CFG itself, the reversal is: MIR lowers from B4 and TIR becomes a *verified projection*. Decide with evidence when #22 hits the first `if`/loop (requires grammar work in #2).
 - **O4 — CST storage** (rowan-style green/red vs. custom vs. arena) is #18's benchmark decision; the CST contract above holds for any of them.

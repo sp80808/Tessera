@@ -433,22 +433,30 @@ impl<'a> Parser<'a> {
         self.finish();
     }
 
-    fn parse_expr(&mut self) {
+    /// Parse a `+` chain; return its expression depth (see [`MAX_EXPR_DEPTH`]).
+    fn parse_expr(&mut self) -> usize {
         let start = self.events.len();
-        self.parse_primary();
+        let mut depth = self.parse_primary();
         // Left-associative: every link of `a+b+c` starts at the same event as
         // its lhs, so all the `Start(BinExpr)` events are inserted in ONE
         // splice after the chain is parsed (per-link insertion is quadratic).
         let mut links = 0;
         while self.cur() == Some(TokenKind::Plus) {
-            if self.depth + links >= MAX_EXPR_DEPTH {
+            if depth >= MAX_EXPR_DEPTH {
                 self.too_deep();
                 break;
             }
             self.bump();
-            self.parse_primary();
+            let rhs = self.parse_primary();
             self.finish();
             links += 1;
+            // The new link sits above both operands, so it is one deeper than
+            // the deeper of them; the budget is the whole path, not this level.
+            depth = depth.max(rhs) + 1;
+            if depth > MAX_EXPR_DEPTH {
+                self.too_deep();
+                break;
+            }
         }
         if links > 0 {
             self.events.splice(
@@ -456,11 +464,15 @@ impl<'a> Parser<'a> {
                 std::iter::repeat_n(Event::Start(NodeKind::BinExpr), links),
             );
         }
+        depth
     }
 
     /// Report the depth limit once and swallow the rest of the input into one
     /// `Error` node so every enclosing rule unwinds without more diagnostics.
     fn too_deep(&mut self) {
+        if self.poisoned {
+            return;
+        }
         self.diag(
             "E-syntax-nesting-too-deep",
             format!(
@@ -475,32 +487,43 @@ impl<'a> Parser<'a> {
         self.finish();
     }
 
-    fn parse_primary(&mut self) {
+    /// Parse one operand; return its expression depth (a leaf is 0, a
+    /// parenthesized expression one more than its contents).
+    fn parse_primary(&mut self) -> usize {
         match self.cur() {
             Some(TokenKind::Int) => {
                 self.start(NodeKind::LiteralExpr);
                 self.bump();
                 self.finish();
+                0
             }
             Some(TokenKind::Ident) => {
                 self.start(NodeKind::PathExpr);
                 self.bump();
                 self.finish();
+                0
             }
             Some(TokenKind::LParen) => {
                 if self.depth >= MAX_NESTING {
                     self.too_deep();
-                    return;
+                    return 0;
                 }
                 self.depth += 1;
                 self.start(NodeKind::ParenExpr);
                 self.bump();
-                self.parse_expr();
+                let depth = self.parse_expr() + 1;
                 self.expect(TokenKind::RParen);
                 self.finish();
                 self.depth -= 1;
+                if depth > MAX_EXPR_DEPTH {
+                    self.too_deep();
+                }
+                depth
             }
-            _ => self.recover("expression"),
+            _ => {
+                self.recover("expression");
+                0
+            }
         }
     }
 }

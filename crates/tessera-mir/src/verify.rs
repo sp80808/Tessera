@@ -84,7 +84,10 @@ pub enum MirErrorKind {
     /// The function has no locals, so no return place `_0`.
     MissingReturnPlace,
     /// `_0` does not have the function's declared return type.
-    ReturnTypeMismatch { ret: TirType, place: TirType },
+    ReturnTypeMismatch {
+        ret: TirType,
+        place: TirType,
+    },
     /// A local's kind does not fit its position.
     LocalKindMismatch {
         local: LocalId,
@@ -92,11 +95,18 @@ pub enum MirErrorKind {
         got: LocalKind,
     },
     /// The `index`-th parameter is not `_{index + 1}`.
-    ParamNotSequential { index: usize, got: LocalId },
+    ParamNotSequential {
+        index: usize,
+        got: LocalId,
+    },
     /// A local id past the end of the function's locals.
-    LocalOutOfRange { local: LocalId },
+    LocalOutOfRange {
+        local: LocalId,
+    },
     /// A jump target past the end of the function's blocks.
-    BlockOutOfRange { target: BlockId },
+    BlockOutOfRange {
+        target: BlockId,
+    },
     UnreachableBlock,
     AssignTypeMismatch {
         dest: LocalId,
@@ -108,12 +118,18 @@ pub enum MirErrorKind {
         want: TirType,
         got: TirType,
     },
-    BranchCondNotBool { got: TirType },
+    BranchCondNotBool {
+        got: TirType,
+    },
     /// `Add` without an overflow mode.
     MissingOverflowMode,
     /// A non-`Add` operation that states an overflow mode.
-    UnexpectedOverflowMode { mode: OverflowMode },
-    UnknownCallee { callee: FuncId },
+    UnexpectedOverflowMode {
+        mode: OverflowMode,
+    },
+    UnknownCallee {
+        callee: FuncId,
+    },
     ArityMismatch {
         callee: FuncId,
         want: usize,
@@ -127,12 +143,20 @@ pub enum MirErrorKind {
     /// `Synthesized` provenance with an empty reason.
     EmptySynthReason,
     /// A read of a local that is not definitely initialized.
-    UseNotInitialized { local: LocalId, state: LocalState },
+    UseNotInitialized {
+        local: LocalId,
+        state: LocalState,
+    },
     /// A `Drop` of a local that is not definitely initialized
     /// (`state == Dropped` is a double drop).
-    DropNotInitialized { local: LocalId, state: LocalState },
+    DropNotInitialized {
+        local: LocalId,
+        state: LocalState,
+    },
     /// `return` while `_0` is not definitely initialized.
-    ReturnPlaceNotInitialized { state: LocalState },
+    ReturnPlaceNotInitialized {
+        state: LocalState,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -561,7 +585,9 @@ impl Checker<'_> {
             let mut found: Vec<(MirLoc, MirErrorKind)> = Vec::new();
             for (index, stmt) in block.stmts.iter().enumerate() {
                 let at = MirLoc::Stmt { block: b, index };
-                transfer_stmt(&mut state, stmt, true, &mut |bad| found.push((at, bad.into())));
+                transfer_stmt(&mut state, stmt, true, &mut |bad| {
+                    found.push((at, bad.into()))
+                });
             }
             let at = MirLoc::Terminator { block: b };
             transfer_term(&mut state, &block.terminator, true, &mut |bad| {
@@ -593,12 +619,7 @@ impl From<Bad> for MirErrorKind {
 
 /// Read `op`. `recover` marks a bad-read local initialized afterwards (used
 /// only when reporting, so one bad statement yields one finding per local).
-fn read_operand(
-    state: &mut [LocalState],
-    op: &Operand,
-    recover: bool,
-    bad: &mut dyn FnMut(Bad),
-) {
+fn read_operand(state: &mut [LocalState], op: &Operand, recover: bool, bad: &mut dyn FnMut(Bad)) {
     let Some(local) = op.local() else { return };
     let Some(slot) = state.get_mut(local.0 as usize) else {
         return;
