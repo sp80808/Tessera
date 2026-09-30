@@ -17,7 +17,8 @@
 use std::fmt;
 
 use ast::AstSpans;
-use tessera_tir::{TirExpr, TirFunction, TirParam};
+use tessera_phases::{Provenance, ProvenanceMap};
+use tessera_tir::{FunctionProvenance, TirExpr, TirFunction, TirNodeId, TirParam};
 
 pub use tessera_tir::TirType;
 
@@ -208,6 +209,32 @@ pub fn to_tir(func: &AstFunction, spans: &AstSpans) -> Result<TirFunction, Synta
         ret: func.ret,
         body: lower_expr(&func.body, &func.params, spans, &mut 0)?,
     })
+}
+
+/// Provenance of the TIR that [`to_tir`] builds from an AST with these spans.
+///
+/// `to_tir` makes exactly one TIR node per AST expression, in the same
+/// pre-order, so `TirNodeId(i)` comes from `spans.exprs[i]`; a parameter's
+/// provenance covers `name:type`. Part of the TEMPORARY(#19) bootstrap bridge,
+/// like `to_tir` itself: the HIR/sema path will own this mapping.
+#[must_use]
+pub fn tir_provenance(spans: &AstSpans) -> FunctionProvenance {
+    let mut nodes = ProvenanceMap::new();
+    for (i, span) in spans.exprs.iter().enumerate() {
+        nodes.insert(
+            TirNodeId(u32::try_from(i).unwrap_or(u32::MAX)),
+            Provenance::Source(*span),
+        );
+    }
+    FunctionProvenance {
+        func: Provenance::Source(spans.func),
+        params: spans
+            .params
+            .iter()
+            .map(|p| Provenance::Source(p.name.cover(p.ty).unwrap_or(p.name)))
+            .collect(),
+        nodes,
+    }
 }
 
 /// Parse one TC function with its span table. Whitespace and `//` comments
@@ -552,6 +579,44 @@ mod tests {
             lower_to_tc(&module.funcs[0]).as_deref(),
             Ok("f add(a:i64,b:i64)>i64=a+b")
         );
+    }
+
+    /// The bridge's provenance is total and each TIR node points at the TC
+    /// text of the expression it came from.
+    #[test]
+    fn tir_provenance_is_total_and_exact() {
+        for (input, _) in CORPUS {
+            let (func, spans) = parse_with_spans(input).expect("parses");
+            let tir = to_tir(&func, &spans).expect("lowers");
+            let prov = tir_provenance(&spans);
+            assert!(prov.missing(&tir).is_empty(), "{input:?}");
+            assert_eq!(prov.nodes.iter().count(), tir.nodes().len(), "{input:?}");
+            assert_eq!(prov.params.len(), tir.params.len());
+        }
+        let src = "f n(a:i64,b:i64)>i64=(a+b)+1";
+        let (func, spans) = parse_with_spans(src).expect("parses");
+        let tir = to_tir(&func, &spans).expect("lowers");
+        let prov = tir_provenance(&spans);
+        let text = |p: Provenance| {
+            let s = p.primary_span();
+            &src[s.start as usize..s.end as usize]
+        };
+        let got: Vec<_> = tir
+            .nodes()
+            .iter()
+            .map(|(id, e)| (e.op_name(), text(prov.nodes.get(*id).expect("total"))))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("add", "(a+b)+1"),
+                ("add", "a+b"),
+                ("var", "a"),
+                ("var", "b"),
+                ("int", "1")
+            ]
+        );
+        assert_eq!(text(prov.params[1]), "b:i64");
     }
 
     /// Formatting changes (whitespace, comments, redundant parens) must not

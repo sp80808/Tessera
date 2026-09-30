@@ -1112,8 +1112,10 @@ name = "tessera-cli"
 version = "0.0.1"
 dependencies = [
  "tessera-db",
+ "tessera-mir",
  "tessera-phases",
  "tessera-syntax",
+ "tessera-tir",
 ]
 
 [[package]]
