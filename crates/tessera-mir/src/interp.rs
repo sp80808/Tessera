@@ -172,10 +172,12 @@ pub fn run(
     let Some(entry) = module.func(func) else {
         return malformed(format!("no function {func}"));
     };
+    // Same order as the TIR evaluator: bad entry arguments before the limit.
+    let frame = Frame::new(entry, args.to_vec(), None)?;
     if limits.max_call_depth == 0 {
         return Err(Halt::CallDepthExceeded);
     }
-    let mut stack = vec![Frame::new(entry, args.to_vec(), None)?];
+    let mut stack = vec![frame];
     let mut fuel = limits.fuel;
     loop {
         if fuel == 0 {

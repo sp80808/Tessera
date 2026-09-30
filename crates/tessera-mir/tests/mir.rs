@@ -62,6 +62,32 @@ fn add(_1: i64, _2: i64) -> i64 {  // #0 src 0:0..92
     );
 }
 
+/// Entry-call checks happen in the same order as in the TIR evaluator, so the
+/// two executors report the same halt even for invalid calls.
+#[test]
+fn entry_checks_match_the_tir_evaluator() {
+    let text = "(func f (param a i64) (return i64) (body (var a i64)))";
+    let tir = TirModule::parse(text).expect("parses");
+    let mir = lower_text(text);
+    let zero = Limits {
+        fuel: 10,
+        max_call_depth: 0,
+    };
+    for args in [vec![], vec![Value::Bool(true)], vec![Value::Int(1)]] {
+        let opts = tessera_tir::eval::EvalOptions {
+            overflow: tessera_tir::eval::Overflow::Trapping,
+            limits: zero,
+        };
+        let want = tessera_tir::eval::eval(&tir, "f", &args, &opts);
+        let got = interp::run(&mir, FuncId(0), &args, &zero);
+        assert_eq!(
+            std::mem::discriminant(&got.unwrap_err()),
+            std::mem::discriminant(&want.unwrap_err()),
+            "{args:?}"
+        );
+    }
+}
+
 /// `let` binders, the short-circuit diamond of `and`, the `if` diamond and a
 /// call by `FuncId`: every compiler-made jump names why it exists.
 #[test]
