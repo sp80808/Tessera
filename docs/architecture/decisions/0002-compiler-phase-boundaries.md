@@ -31,7 +31,7 @@ The bootstrap frontend (`tessera-syntax`) goes source → tokens → AST → TIR
 - More conversion boundaries; each needs a dump format and snapshot tests.
 - Provenance tables add memory and one lookup per diagnostic.
 - Adding a crate requires registering it in the `LAYERS` table (deliberate friction).
-- Known violations of the contract in current code are listed in compiler-phases.md §6 and tracked by issues; one is an executable `#[ignore]`d test.
+- Known violations of the contract in current code are listed in compiler-phases.md §6 and tracked by issues.
 
 ## Evidence
 

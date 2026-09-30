@@ -24,8 +24,8 @@ use std::fmt::Write as _;
 
 use tessera_phases::{Diagnostic, DiagnosticSet, FileId, Phase, PhaseOutput, Provenance, Span};
 
-use crate::MAX_NESTING;
 use crate::lexer::{self, Token, TokenKind};
+use crate::{MAX_EXPR_DEPTH, MAX_NESTING};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NodeKind {
@@ -404,13 +404,43 @@ impl<'a> Parser<'a> {
     fn parse_expr(&mut self) {
         let start = self.events.len();
         self.parse_primary();
+        // Left-associative: every link of `a+b+c` starts at the same event as
+        // its lhs, so all the `Start(BinExpr)` events are inserted in ONE
+        // splice after the chain is parsed (per-link insertion is quadratic).
+        let mut links = 0;
         while self.cur() == Some(TokenKind::Plus) {
-            // left-associative: wrap everything parsed so far
-            self.events.insert(start, Event::Start(NodeKind::BinExpr));
+            if self.depth + links >= MAX_EXPR_DEPTH {
+                self.too_deep();
+                break;
+            }
             self.bump();
             self.parse_primary();
             self.finish();
+            links += 1;
         }
+        if links > 0 {
+            self.events.splice(
+                start..start,
+                std::iter::repeat_n(Event::Start(NodeKind::BinExpr), links),
+            );
+        }
+    }
+
+    /// Report the depth limit once and swallow the rest of the input into one
+    /// `Error` node so every enclosing rule unwinds without more diagnostics.
+    fn too_deep(&mut self) {
+        self.diag(
+            "E-syntax-nesting-too-deep",
+            format!(
+                "expression nested deeper than the limits ({MAX_NESTING} parenthesis levels, {MAX_EXPR_DEPTH} expression depth)"
+            ),
+        );
+        self.poisoned = true;
+        self.start(NodeKind::Error);
+        while self.cur().is_some() {
+            self.bump();
+        }
+        self.finish();
     }
 
     fn parse_primary(&mut self) {
@@ -427,16 +457,7 @@ impl<'a> Parser<'a> {
             }
             Some(TokenKind::LParen) => {
                 if self.depth >= MAX_NESTING {
-                    self.diag(
-                        "E-syntax-nesting-too-deep",
-                        format!("nesting deeper than {MAX_NESTING} levels"),
-                    );
-                    self.poisoned = true;
-                    self.start(NodeKind::Error);
-                    while self.cur().is_some() {
-                        self.bump();
-                    }
-                    self.finish();
+                    self.too_deep();
                     return;
                 }
                 self.depth += 1;
@@ -726,6 +747,31 @@ File 0..27
     }
 
     #[test]
+    fn long_addition_chains_are_bounded_and_linear() {
+        let n = 1_000_000;
+        let src = format!("f c(a:i64)>i64={}", vec!["a"; n].join("+"));
+        let (parsed, diags) = check(&src);
+        assert_eq!(diags.len(), 1);
+        assert_eq!(
+            diags.iter().next().unwrap().code,
+            "E-syntax-nesting-too-deep"
+        );
+        // depth of the resulting CST is bounded by the limit
+        assert!(
+            parsed
+                .cst
+                .kinds()
+                .iter()
+                .filter(|k| **k == NodeKind::BinExpr)
+                .count()
+                <= MAX_EXPR_DEPTH
+        );
+        // exactly at the limit is fine
+        let ok = format!("f c(a:i64)>i64={}", vec!["a"; MAX_EXPR_DEPTH].join("+"));
+        assert!(check(&ok).1.is_empty());
+    }
+
+    #[test]
     fn parse_is_deterministic() {
         let src = "f x(a:i64,)>i64=(a+";
         assert_eq!(parse_file(F, src), parse_file(F, src));
@@ -755,14 +801,14 @@ File 0..27
         }
     }
 
-    /// Differential check against the fail-fast bootstrap parser: they must
+    /// Differential check against the frozen fail-fast oracle (`legacy`): they must
     /// agree on syntactic acceptance. (Semantic rejections — unknown type,
     /// integer range — are not syntax and are allowed to differ.)
     fn agree(src: &str) {
         let out = parse_file(F, src);
         assert_eq!(out.value.reconstruct(src), src);
         assert_well_formed(&out.value, src);
-        match crate::parse(src) {
+        match crate::legacy::parse(src) {
             Ok(_) => assert!(out.is_clean(), "legacy accepts, cst rejects: {src:?}"),
             Err(
                 crate::SyntaxError::Unexpected { .. }

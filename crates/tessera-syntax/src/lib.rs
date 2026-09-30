@@ -16,92 +16,17 @@
 
 use std::fmt;
 
-use lexer::TokenKind;
+use ast::AstSpans;
 use tessera_tir::{TirExpr, TirFunction, TirParam};
 
 pub use tessera_tir::TirType;
 
+pub mod ast;
 pub mod cst;
 pub mod lexer;
 
-// ---------- tokens ----------
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Token {
-    Func,
-    Ident(String),
-    Int(i64),
-    Colon,
-    Comma,
-    LParen,
-    RParen,
-    Gt,
-    Eq,
-    Plus,
-}
-
-impl Token {
-    const fn kind(&self) -> &'static str {
-        match self {
-            Self::Func => "`f`",
-            Self::Ident(_) => "identifier",
-            Self::Int(_) => "integer",
-            Self::Colon => "`:`",
-            Self::Comma => "`,`",
-            Self::LParen => "`(`",
-            Self::RParen => "`)`",
-            Self::Gt => "`>`",
-            Self::Eq => "`=`",
-            Self::Plus => "`+`",
-        }
-    }
-}
-
-/// Lex for the parser: trivia dropped, integers parsed, unknown input rejected.
-/// The lossless token stream lives in [`lexer`]; this is the bootstrap parser's
-/// view of it (the parser fails at the first bad token; recovery is #18 work).
-fn lex(src: &str) -> Result<Vec<(Token, usize)>, SyntaxError> {
-    let mut out = Vec::new();
-    for tok in lexer::lex(src) {
-        let text = tok.text(src);
-        let token = match tok.kind {
-            TokenKind::Whitespace | TokenKind::LineComment => continue,
-            TokenKind::Ident if text == "f" => Token::Func,
-            TokenKind::Ident => Token::Ident(text.to_owned()),
-            TokenKind::Int => Token::Int(
-                text.parse()
-                    .map_err(|_| SyntaxError::IntOutOfRange { at: tok.start })?,
-            ),
-            TokenKind::Colon => Token::Colon,
-            TokenKind::Comma => Token::Comma,
-            TokenKind::LParen => Token::LParen,
-            TokenKind::RParen => Token::RParen,
-            TokenKind::Gt => Token::Gt,
-            TokenKind::Eq => Token::Eq,
-            TokenKind::Plus => Token::Plus,
-            TokenKind::Error
-            | TokenKind::Minus
-            | TokenKind::Star
-            | TokenKind::Lt
-            | TokenKind::Bang
-            | TokenKind::Amp
-            | TokenKind::Dot
-            | TokenKind::Semi
-            | TokenKind::LBrace
-            | TokenKind::RBrace
-            | TokenKind::LBracket
-            | TokenKind::RBracket => {
-                return Err(SyntaxError::Unexpected {
-                    at: tok.start,
-                    want: "TC token",
-                    got: format!("byte {:#04X}", text.as_bytes()[0]),
-                });
-            }
-        };
-        out.push((token, tok.start));
-    }
-    Ok(out)
-}
+#[cfg(test)]
+mod legacy;
 
 // ---------- AST (TC surface) ----------
 
@@ -133,7 +58,7 @@ pub struct AstFunction {
 pub enum SyntaxError {
     Unexpected {
         at: usize,
-        want: &'static str,
+        want: String,
         got: String,
     },
     UnknownType {
@@ -192,7 +117,10 @@ impl fmt::Display for SyntaxError {
             Self::IntOutOfRange { at } => write!(f, "offset {at}: integer out of i64 range"),
             Self::TrailingInput { at } => write!(f, "offset {at}: trailing input after function"),
             Self::NestingTooDeep { at } => {
-                write!(f, "offset {at}: nesting deeper than {MAX_NESTING} levels")
+                write!(
+                    f,
+                    "offset {at}: expression too deeply nested (limits: {MAX_NESTING} parenthesis levels, {MAX_EXPR_DEPTH} expression depth)"
+                )
             }
             Self::EmptyProgram => write!(f, "empty program: expected one `f` function"),
         }
@@ -206,158 +134,24 @@ impl std::error::Error for SyntaxError {}
 /// Provisional recursion bound for parenthesized expressions.
 pub const MAX_NESTING: usize = 128;
 
-struct Parser {
-    tokens: Vec<(Token, usize)>,
-    pos: usize,
-    depth: usize,
-}
-
-impl Parser {
-    fn peek(&self) -> Option<&(Token, usize)> {
-        self.tokens.get(self.pos)
-    }
-
-    fn next(&mut self) -> Option<(Token, usize)> {
-        let item = self.tokens.get(self.pos).cloned();
-        if item.is_some() {
-            self.pos += 1;
-        }
-        item
-    }
-
-    fn expect(&mut self, want: Token, want_str: &'static str) -> Result<usize, SyntaxError> {
-        match self.next() {
-            Some((token, at)) if token == want => Ok(at),
-            Some((token, at)) => Err(SyntaxError::Unexpected {
-                at,
-                want: want_str,
-                got: token.kind().to_owned(),
-            }),
-            None => Err(SyntaxError::Unexpected {
-                at: self.tokens.last().map_or(0, |(_, at)| at + 1),
-                want: want_str,
-                got: "end of input".to_owned(),
-            }),
-        }
-    }
-
-    fn expect_ident(&mut self, want: &'static str) -> Result<(String, usize), SyntaxError> {
-        match self.next() {
-            Some((Token::Ident(name), at)) => Ok((name, at)),
-            Some((token, at)) => Err(SyntaxError::Unexpected {
-                at,
-                want,
-                got: token.kind().to_owned(),
-            }),
-            None => Err(SyntaxError::Unexpected {
-                at: self.tokens.last().map_or(0, |(_, at)| at + 1),
-                want,
-                got: "end of input".to_owned(),
-            }),
-        }
-    }
-
-    fn parse_type(&mut self) -> Result<(TirType, usize), SyntaxError> {
-        let (name, at) = self.expect_ident("type")?;
-        match name.as_str() {
-            "i64" => Ok((TirType::I64, at)),
-            _ => Err(SyntaxError::UnknownType { at, name }),
-        }
-    }
-
-    fn parse_function(&mut self) -> Result<AstFunction, SyntaxError> {
-        self.expect(Token::Func, "`f`")?;
-        let (name, _) = self.expect_ident("function name")?;
-        self.expect(Token::LParen, "`(`")?;
-        let mut params = Vec::new();
-        if !matches!(self.peek(), Some((Token::RParen, _))) {
-            loop {
-                let (param, _) = self.expect_ident("parameter name")?;
-                self.expect(Token::Colon, "`:`")?;
-                let (ty, _) = self.parse_type()?;
-                params.push((AstParam { name: param }, ty));
-                if matches!(self.peek(), Some((Token::Comma, _))) {
-                    self.next();
-                } else {
-                    break;
-                }
-            }
-        }
-        self.expect(Token::RParen, "`)`")?;
-        self.expect(Token::Gt, "`>`")?;
-        let (ret, _) = self.parse_type()?;
-        self.expect(Token::Eq, "`=`")?;
-        let body = self.parse_add()?;
-        if let Some((_, at)) = self.peek() {
-            return Err(SyntaxError::TrailingInput { at: *at });
-        }
-        Ok(AstFunction {
-            name,
-            params,
-            ret,
-            body,
-        })
-    }
-
-    fn parse_add(&mut self) -> Result<AstExpr, SyntaxError> {
-        let mut lhs = self.parse_primary()?;
-        while matches!(self.peek(), Some((Token::Plus, _))) {
-            self.next();
-            let rhs = self.parse_primary()?;
-            lhs = AstExpr::Add(Box::new(lhs), Box::new(rhs));
-        }
-        Ok(lhs)
-    }
-
-    fn parse_primary(&mut self) -> Result<AstExpr, SyntaxError> {
-        match self.next() {
-            Some((Token::Int(value), _)) => Ok(AstExpr::Int(value)),
-            Some((Token::Ident(name), _)) => Ok(AstExpr::Var(name)),
-            Some((Token::LParen, at)) => {
-                if self.depth >= MAX_NESTING {
-                    return Err(SyntaxError::NestingTooDeep { at });
-                }
-                self.depth += 1;
-                let inner = self.parse_add()?;
-                self.depth -= 1;
-                self.expect(Token::RParen, "`)`")?;
-                Ok(inner)
-            }
-            Some((token, at)) => Err(SyntaxError::Unexpected {
-                at,
-                want: "expression",
-                got: token.kind().to_owned(),
-            }),
-            None => Err(SyntaxError::Unexpected {
-                at: self.tokens.last().map_or(0, |(_, at)| at + 1),
-                want: "expression",
-                got: "end of input".to_owned(),
-            }),
-        }
-    }
-}
-
-/// Parse one TC function. Whitespace and `//` comments are trivia.
-pub fn parse(src: &str) -> Result<AstFunction, SyntaxError> {
-    let tokens = lex(src)?;
-    if tokens.is_empty() {
-        return Err(SyntaxError::EmptyProgram);
-    }
-    Parser {
-        tokens,
-        pos: 0,
-        depth: 0,
-    }
-    .parse_function()
-}
+/// Provisional bound on expression *tree* depth (paren nesting plus the length
+/// of a left-leaning `+` chain). The bootstrap AST/TIR and their consumers
+/// (formatter, lowering, `Drop`) are recursive, so unbounded depth would
+/// overflow the stack; exceeding it is a diagnostic. Revisit when #19 moves to
+/// arena-based HIR.
+pub const MAX_EXPR_DEPTH: usize = 1000;
 
 // ---------- lowering (AST -> TIR: every inferred type made explicit) ----------
 
 fn lower_expr(
     expr: &AstExpr,
     params: &[(AstParam, TirType)],
-    at: usize,
+    spans: &AstSpans,
+    next: &mut usize,
 ) -> Result<TirExpr, SyntaxError> {
+    // pre-order index of this node in `spans.exprs`
+    let at = spans.expr_start(*next);
+    *next += 1;
     match expr {
         AstExpr::Int(value) => Ok(TirExpr::Int {
             value: *value,
@@ -375,8 +169,8 @@ fn lower_expr(
                 name: name.clone(),
             }),
         AstExpr::Add(lhs, rhs) => {
-            let lhs = lower_expr(lhs, params, at)?;
-            let rhs = lower_expr(rhs, params, at)?;
+            let lhs = lower_expr(lhs, params, spans, next)?;
+            let rhs = lower_expr(rhs, params, spans, next)?;
             if lhs.ty() != rhs.ty() {
                 return Err(SyntaxError::TypeMismatch {
                     at,
@@ -395,7 +189,9 @@ fn lower_expr(
 }
 
 /// Expand a parsed function to explicit TIR. Pure; no model/network involved.
-pub fn to_tir(func: &AstFunction) -> Result<TirFunction, SyntaxError> {
+/// Errors carry the source offset from `spans` (PROV-2); pass
+/// `AstSpans::empty` for ASTs not parsed from source (offsets are then 0).
+pub fn to_tir(func: &AstFunction, spans: &AstSpans) -> Result<TirFunction, SyntaxError> {
     Ok(TirFunction {
         name: func.name.clone(),
         params: func
@@ -407,8 +203,20 @@ pub fn to_tir(func: &AstFunction) -> Result<TirFunction, SyntaxError> {
             })
             .collect(),
         ret: func.ret,
-        body: lower_expr(&func.body, &func.params, 0)?,
+        body: lower_expr(&func.body, &func.params, spans, &mut 0)?,
     })
+}
+
+/// Parse one TC function with its span table. Whitespace and `//` comments
+/// are trivia. Thin wrapper over the tolerant CST parser: the first syntax
+/// diagnostic becomes the error.
+pub fn parse_with_spans(src: &str) -> Result<(AstFunction, AstSpans), SyntaxError> {
+    let out = cst::parse_file(tessera_phases::FileId(0), src);
+    ast::lower(&out.value, src, &out.diagnostics)
+}
+
+pub fn parse(src: &str) -> Result<AstFunction, SyntaxError> {
+    parse_with_spans(src).map(|(func, _)| func)
 }
 
 // ---------- canonical formatting (exactly one spelling) ----------
@@ -487,9 +295,8 @@ fn strip_types(expr: &TirExpr) -> AstExpr {
 
 /// Expand TC source to TIR text (`tsr tir`); the compiler performs expansion.
 pub fn expand(src: &str) -> Result<String, SyntaxError> {
-    parse(src)
-        .and_then(|func| to_tir(&func))
-        .map(|tir| tir.to_text())
+    let (func, spans) = parse_with_spans(src)?;
+    to_tir(&func, &spans).map(|tir| tir.to_text())
 }
 
 #[cfg(test)]
@@ -536,7 +343,9 @@ mod tests {
     #[test]
     fn tc_tir_tc_round_trip_is_byte_exact() {
         for (input, canonical) in CORPUS {
-            let tir = parse(input).and_then(|func| to_tir(&func)).expect("lowers");
+            let tir = parse_with_spans(input)
+                .and_then(|(func, spans)| to_tir(&func, &spans))
+                .expect("lowers");
             assert_eq!(lower_to_tc(&tir), **canonical, "input: {input}");
         }
     }
@@ -662,11 +471,8 @@ mod tests {
         }
     }
 
-    /// KNOWN CONTRACT GAP (PROV-2, tracked by #19/#23): lowering to TIR loses
-    /// the source position of the offending name (`at` is hard-coded to 0).
-    /// Enable when AST nodes carry spans.
+    /// PROV-2: semantic errors keep the source offset of the offending node.
     #[test]
-    #[ignore = "PROV-2: to_tir reports offset 0 for semantic errors; fixed when AST/HIR carry spans (#19)"]
     fn semantic_errors_keep_their_source_offset() {
         let src = "f add(a:i64)>i64=a+b";
         let want = src.rfind('b').expect("has b");
@@ -674,5 +480,107 @@ mod tests {
             Err(SyntaxError::UnboundVar { at, .. }) => assert_eq!(at, want),
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[test]
+    fn ast_spans_are_exact_for_the_bootstrap_fixture() {
+        let src = "f add(a:i64,b:i64)>i64=a+b\n";
+        let (_, s) = parse_with_spans(src).expect("parses");
+        let r = |sp: tessera_phases::Span| (sp.start, sp.end);
+        assert_eq!(r(s.func), (0, 26));
+        assert_eq!(r(s.name), (2, 5));
+        assert_eq!(r(s.ret), (19, 22));
+        assert_eq!(r(s.body), (23, 26));
+        assert_eq!(
+            s.params
+                .iter()
+                .map(|p| (r(p.name), r(p.ty)))
+                .collect::<Vec<_>>(),
+            [((6, 7), (8, 11)), ((12, 13), (14, 17))]
+        );
+        // pre-order: Add, lhs, rhs
+        assert_eq!(
+            s.exprs.iter().map(|&e| r(e)).collect::<Vec<_>>(),
+            [(23, 26), (23, 24), (25, 26)]
+        );
+    }
+
+    /// INV-ID-2 at the AST level: reformatting changes spans, never the AST.
+    #[test]
+    fn reformatting_changes_spans_but_not_the_ast() {
+        let (a, sa) = parse_with_spans("f add(a:i64,b:i64)>i64=a+b").expect("a");
+        let (b, sb) =
+            parse_with_spans("// c\nf add( a:i64 , b:i64 ) > i64 = ( a + b )").expect("b");
+        assert_eq!(a, b);
+        assert_ne!(sa, sb);
+    }
+
+    #[test]
+    fn parenthesized_and_nested_expression_spans_follow_the_ast_not_the_parens() {
+        let src = "f n(a:i64,b:i64)>i64=(a+b)+1";
+        let (_, s) = parse_with_spans(src).expect("parses");
+        // Add(Add(a,b),1): 4 nodes, pre-order; inner Add spans `a+b` without parens
+        let spans: Vec<_> = s
+            .exprs
+            .iter()
+            .map(|e| &src[e.start as usize..e.end as usize])
+            .collect();
+        assert_eq!(spans, ["(a+b)+1", "a+b", "a", "b", "1"]);
+    }
+
+    #[test]
+    fn errors_from_the_cst_path_keep_legacy_shape_and_offsets() {
+        assert!(matches!(
+            parse("f x()>i64=1 2"),
+            Err(SyntaxError::TrailingInput { at: 12 })
+        ));
+        assert!(matches!(
+            parse("f x(a:bool)>i64=1"),
+            Err(SyntaxError::UnknownType { at: 6, .. })
+        ));
+        assert!(matches!(
+            parse("f x()>i64=99999999999999999999"),
+            Err(SyntaxError::IntOutOfRange { at: 10 })
+        ));
+        match parse("f x()>i64=") {
+            Err(SyntaxError::Unexpected { want, got, .. }) => {
+                assert_eq!(
+                    (want.as_str(), got.as_str()),
+                    ("expression", "end of input")
+                );
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+
+    /// The facade and the frozen oracle agree on every accepted program's AST.
+    #[test]
+    fn facade_matches_legacy_oracle_on_accepted_programs() {
+        for (input, _) in CORPUS {
+            assert_eq!(parse(input), legacy::parse(input), "{input:?}");
+        }
+    }
+
+    /// Every recursive consumer (lowering, formatter, TIR text, Drop) must
+    /// survive the deepest accepted input on a small test-thread stack, and
+    /// anything beyond it must be a diagnostic, not an abort.
+    #[test]
+    fn deepest_accepted_and_hostile_chains_never_overflow_the_stack() {
+        let at_limit = format!("f c(a:i64)>i64={}", vec!["a"; MAX_EXPR_DEPTH].join("+"));
+        let canonical = fmt(&at_limit).expect("at the limit is accepted");
+        assert_eq!(fmt(&canonical).as_deref(), Ok(canonical.as_str()));
+        assert!(expand(&at_limit).is_ok());
+        let parens = format!(
+            "f c(a:i64)>i64={}a{}",
+            "(".repeat(MAX_NESTING),
+            ")".repeat(MAX_NESTING)
+        );
+        assert!(expand(&parens).is_ok());
+
+        let hostile = format!("f c(a:i64)>i64={}", vec!["a"; 1_000_000].join("+"));
+        assert!(matches!(
+            parse(&hostile),
+            Err(SyntaxError::NestingTooDeep { .. })
+        ));
     }
 }

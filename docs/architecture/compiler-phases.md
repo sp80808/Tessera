@@ -85,7 +85,7 @@ enum Provenance {
 There is no "unknown" variant. A compiler-introduced node (desugaring, implicit drop, inferred type made explicit) names the source span that caused it and a stable reason string.
 
 - PROV-1: for every ID a phase exposes, its `ProvenanceMap<Id>` is total. `ProvenanceMap::missing(ids)` must be empty at every lowering boundary.
-- PROV-2: lowering `A → B` maps every `B` ID to provenance derived from the `A` provenance of its origin. Spans never reset to zero or to "whole file" to make a check pass. *(Violated today by the bootstrap `to_tir`; see §6 G2 and the `#[ignore]`d test `semantic_errors_keep_their_source_offset`.)*
+- PROV-2: lowering `A → B` maps every `B` ID to provenance derived from the `A` provenance of its origin. Spans never reset to zero or to "whole file" to make a check pass. *(Holds for the bootstrap CST → AST → TIR path as far as error offsets go: `AstSpans` side table, test `semantic_errors_keep_their_source_offset`. TIR nodes themselves still carry no provenance; see §6 G2.)*
 - PROV-3: provenance lives in **side tables keyed by ID, not inside semantic nodes** from B2 onward (see 2.4 for why).
 
 Spans are half-open byte ranges into the exact source text of one revision. They are not stable across edits; identity (2.4) is.
@@ -176,7 +176,7 @@ Each table answers the ten required questions in order: (1) responsibility, (2) 
 | Explicit/inferred | Only explicit syntax. Error recovery inserts explicit `Error`/`Missing` nodes; it does not guess intent. |
 | Consumers | HIR lowering (#19); formatter; editor tooling; parser tests. **Not** resolution, typing, TIR, MIR or the backend. |
 | Debug | Token dump (`lexer::dump`) and tree dump (`ParsedFile::dump`), both golden-tested. |
-| Lowering precondition | (CST-1) concatenating all tokens equals the source; (CST-2) the parse returned a tree even for malformed input, with `diagnostics.has_errors()` describing it; (CST-3) parsing never panics or overflows the stack on any input (bounded nesting; enforced for the bootstrap parser by `hostile_nesting_returns_a_diagnostic_not_a_crash`); (CST-4) tree storage is replaceable without changing any HIR-facing API. |
+| Lowering precondition | (CST-1) concatenating all tokens equals the source; (CST-2) the parse returned a tree even for malformed input, with `diagnostics.has_errors()` describing it; (CST-3) parsing and every recursive consumer never panic or overflow the stack on any input: parenthesis nesting is bounded by `MAX_NESTING` and total expression depth (nesting + `+`-chain length) by `MAX_EXPR_DEPTH`, both provisional, exceeding either is one diagnostic (enforced by `hostile_nesting_returns_a_diagnostic_not_a_crash`, `deepest_accepted_and_hostile_chains_never_overflow_the_stack`, `long_addition_chains_are_bounded_and_linear`); (CST-4) tree storage is replaceable without changing any HIR-facing API. |
 
 The surface grammar is *replaceable*: two different grammars must be able to lower to the same B2 output. Only `SyntaxKind` and the parser depend on the grammar. Candidate grammars in #1/#2 are fixtures that produce the same B2, which is exactly what the `surface_variation_does_not_change_semantic_result` style of test generalizes.
 
@@ -343,15 +343,16 @@ Deliberate non-goals: no `Phase` trait, no generic pipeline runner, no `Compiler
 | DET-1 | Expansion and diagnostic order are deterministic | **test** `expansion_is_deterministic`; `DiagnosticSet` order test |
 | TIR-3 | TC→TIR→TC round trip is exact on the bootstrap subset | **test** `tc_tir_tc_round_trip_is_byte_exact`, golden fixtures |
 | PROV-1 | Provenance total per phase | mechanism **tested** (`ProvenanceMap::missing`); applied per phase by #19–#22 |
-| PROV-2 | Spans survive lowering | **violated today**, executable gap: `#[ignore]`d test `semantic_errors_keep_their_source_offset` |
+| PROV-2 | Spans survive lowering | **partly enforced**: CST→AST spans exact (`ast_spans_are_exact_for_the_bootstrap_fixture`), AST→TIR errors keep offsets (`semantic_errors_keep_their_source_offset`); TIR nodes carry no provenance yet (G2) |
+| INV-ID-2 (AST level) | Reformatting changes spans, never the AST | **test** `reformatting_changes_spans_but_not_the_ast` |
 | CST-1/2/4, HIR-*, RES-*, TYP-*, TIR-1/2/4/5, MIR-*, BE-* | as specified in §3 | planned with the owning issue (#18–#22, #4) |
 
 ### Known gaps between current code and this contract
 
 | Gap | Where | Owner |
 |---|---|---|
-| G1 | Legacy `parse` is still fail-fast (`Result<AstFunction, SyntaxError>`, first error only). The tolerant path exists (`cst::parse_file` → `PhaseOutput<ParsedFile>`); the AST should become a typed facade over the CST and `parse` a thin wrapper | #18 / #19 |
-| G2 | AST/TIR carry no spans; `to_tir` reports offset 0 for semantic errors (PROV-2) | #19 / #23 |
+| G1 | *(mostly closed)* `parse` is now a thin wrapper over the tolerant CST via the `ast` facade (first diagnostic → legacy `SyntaxError`); the fail-fast parser survives only as a `#[cfg(test)]` differential oracle (`legacy.rs`). `SyntaxError` itself is still the legacy shape | #23 |
+| G2 | TIR nodes carry no provenance/origin link; AST spans exist only as the `AstSpans` side table (pre-order index), not as stable IDs | #19 / #21 |
 | G3 | `tessera-syntax` depends on `tessera-tir` (bootstrap AST→TIR + `lower_to_tc`); CST crate must not know TIR. Recorded as `TEMPORARY(#19)` in `LAYERS` | #19 |
 | G4 | Bootstrap type checking and name resolution are fused inside `to_tir`; B3/B4 do not exist as phases | #20, #21 |
 | G5 | `lower_to_tc` maps TIR `Bool`/`Eq`/`And`/`Not` onto `Int`/`Add` (`strip_types`); those TIR nodes are unreachable from the grammar. Round-trip claim holds only for the `i64` + `+` subset | #21 / #2 |
