@@ -221,12 +221,19 @@ pub fn parse(src: &str) -> Result<AstFunction, SyntaxError> {
 
 // ---------- canonical formatting (exactly one spelling) ----------
 
+/// Canonical expression spelling. `+` is left-associative, so a right operand
+/// that is itself a sum keeps its parentheses: dropping them (`a+(b+c)` ->
+/// `a+b+c`) would re-parse to a different tree. Redundant parentheses (around
+/// left operands, atoms, or the whole body) are the only ones removed.
 #[must_use]
 pub fn format_expr(expr: &AstExpr) -> String {
     match expr {
         AstExpr::Int(value) => value.to_string(),
         AstExpr::Var(name) => name.clone(),
-        AstExpr::Add(lhs, rhs) => format!("{}+{}", format_expr(lhs), format_expr(rhs)),
+        AstExpr::Add(lhs, rhs) => match **rhs {
+            AstExpr::Add(..) => format!("{}+({})", format_expr(lhs), format_expr(rhs)),
+            _ => format!("{}+{}", format_expr(lhs), format_expr(rhs)),
+        },
     }
 }
 
@@ -426,6 +433,81 @@ mod tests {
             fmt("f 1(a:i64)>i64=a"),
             Err(SyntaxError::Unexpected { .. })
         ));
+    }
+
+    /// Regression: `fmt` used to print `a+(b+c)` as `a+b+c`, which parses to a
+    /// different tree ((a+b)+c). Formatting must never change the semantic result.
+    #[test]
+    fn fmt_keeps_parentheses_that_change_the_tree() {
+        assert_eq!(
+            fmt("f x(a:i64,b:i64,c:i64)>i64=a+(b+c)").as_deref(),
+            Ok("f x(a:i64,b:i64,c:i64)>i64=a+(b+c)")
+        );
+        assert_eq!(
+            fmt("f x(a:i64,b:i64,c:i64)>i64=(a+b)+c").as_deref(),
+            Ok("f x(a:i64,b:i64,c:i64)>i64=a+b+c")
+        );
+        assert_ne!(
+            expand("f x(a:i64,b:i64,c:i64)>i64=a+(b+c)"),
+            expand("f x(a:i64,b:i64,c:i64)>i64=a+b+c"),
+            "the two spellings are different trees"
+        );
+    }
+
+    /// Property: for random parenthesized sums, `fmt` is idempotent and never
+    /// changes the TIR (`expand(fmt(x)) == expand(x)`), and `tir -> tc` returns
+    /// exactly `fmt(x)`.
+    #[test]
+    fn fmt_preserves_the_semantic_result_on_random_sums() {
+        fn gen_expr(next: &mut impl FnMut() -> u64, fuel: u32) -> String {
+            if fuel == 0 || next() % 3 == 0 {
+                return match next() % 3 {
+                    0 => "a".to_owned(),
+                    1 => "b".to_owned(),
+                    _ => (next() % 100).to_string(),
+                };
+            }
+            let l = gen_expr(next, fuel - 1);
+            let r = gen_expr(next, fuel - 1);
+            let sum = format!(
+                "{l}{}+{}{r}",
+                ["", " "][(next() % 2) as usize],
+                ["", " "][(next() % 2) as usize]
+            );
+            if next() % 2 == 0 {
+                format!("({sum})")
+            } else {
+                sum
+            }
+        }
+        let mut state = 0x1234_5678_9ABC_DEF1_u64;
+        let mut next = move || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        for _ in 0..3_000 {
+            let src = format!("f g(a:i64,b:i64)>i64={}", gen_expr(&mut next, 6));
+            let canonical = fmt(&src).expect("generated sources parse");
+            assert_eq!(
+                fmt(&canonical).as_deref(),
+                Ok(canonical.as_str()),
+                "idempotent: {src}"
+            );
+            assert_eq!(
+                expand(&canonical),
+                expand(&src),
+                "fmt changed the tree: {src}"
+            );
+            let (func, spans) = parse_with_spans(&src).expect("parses");
+            let tir = to_tir(&func, &spans).expect("lowers");
+            assert_eq!(
+                lower_to_tc(&tir).as_deref(),
+                Ok(canonical.as_str()),
+                "{src}"
+            );
+        }
     }
 
     /// Regression for G5: `lower_to_tc` used to map `Bool`/`Eq`/`And`/`Not` onto
