@@ -43,9 +43,9 @@ object / executable
 | B0 | `SourceText` | `tessera-db` (Salsa input) | #9 | exists (`SourceFile`) |
 | B1 | lossless CST | `tessera-syntax` | #18 | **lexer, parser events, lossless CST + recovery implemented** for the tiny grammar (`tessera_syntax::{lexer,cst}`), plus the typed AST facade with a span side table (`tessera_syntax::ast`); storage benchmark pending |
 | B2 | normalized HIR | `tessera-hir` | #19 | **CST -> HIR lowering, IDs, provenance tables and dump implemented** for the bootstrap grammar; not yet consumed by any later phase (TC reaches TIR through the bootstrap bridge, G3/G4) |
-| B3 | resolved HIR | `tessera-sema` | #20 | *proposed* (crate scaffold only; its HIR input check `input.rs` is not wired yet, G10) |
-| B4 | typed/effect HIR | `tessera-sema` | #21 | *proposed* (bootstrap type checking lives inside `to_tir`) |
-| B5 | TIR | `tessera-tir` | #2/#21 | **TIR v0.1 implemented**: `let`/`if`/`call`/`bool` nodes, standalone reader (with provenance into `.tir` text) and verifier, provenance side table, and a reference evaluator (`tessera_tir::eval`) that defines what TIR means. TC reaches only the `i64` + `+` subset |
+| B3 | resolved HIR | `tessera-sema` | #20 | **implemented for the v0 grammar** (`tessera_sema::resolve`): expression paths bind to parameters (first of a duplicate wins, the duplicate is an error), type annotations resolve against an explicit primitive table (`V0_PRIMS` = `i64`); unresolved names stay `Res::Unresolved`. No items-as-values or imports yet (the grammar has no calls, RFC 0001) |
+| B4 | typed/effect HIR | `tessera-sema` | #21 | **types implemented** (`tessera_sema::typeck`): a `Ty` per expression, `Ty::Error` absorbs cascades, return-type check. **Effects not computed** (G13) |
+| B5 | TIR | `tessera-tir` | #2/#21 | **TIR v0.1 implemented**: `let`/`if`/`call`/`bool` nodes, standalone reader (with provenance into `.tir` text) and verifier, provenance side table, and a reference evaluator (`tessera_tir::eval`) that defines what TIR means. TC reaches only the `i64` + `+` subset, through B2 → B3 → B4 (`tessera_sema::to_tir`) |
 | B6 | MIR / CFG | `tessera-mir` | #22 | **implemented**: lowering from TIR alone, verifier (incl. definite-initialization dataflow), text dump, reference interpreter; differential-tested against the TIR evaluator |
 | B7 | backend IR | `tessera-codegen-cranelift` *(proposed)* | #4 | *proposed* |
 | B8 | object / link | driver (`tessera-cli`) | #24 | *proposed* (the driver can already lower to MIR and run it on the interpreter: `tsr mir`, `tsr run`) |
@@ -310,6 +310,13 @@ fn typeck(res: &ResolvedModule, sigs: &SignatureIndex) -> PhaseOutput<TypedModul
 // B4 -> B5
 fn to_tir(typed: &TypedModule) -> PhaseOutput<TirModule>;
 
+// As implemented for v0 (tessera-sema): results are side tables keyed by HIR
+// ids, so the later phases also read the HIR they annotate. There is no
+// ModuleIndex/SignatureIndex yet because the grammar has no calls or imports.
+fn resolve(hir: &HirOutput) -> PhaseOutput<ResolvedModule>;          // resolve_with(hir, prims)
+fn typeck(hir: &HirOutput, res: &ResolvedModule) -> PhaseOutput<TypedModule>;
+fn to_tir(hir: &HirOutput, res: &ResolvedModule, typed: &TypedModule) -> PhaseOutput<TirOutput>; // + provenance
+
 // B5 -> B6
 fn build_mir(tir: &TirModule) -> PhaseOutput<MirModule>;         // TIR only (TIR-5)
 
@@ -345,6 +352,9 @@ Deliberate non-goals: no `Phase` trait, no generic pipeline runner, no `Compiler
 | PROV-1 | Provenance total per phase | mechanism **tested** (`ProvenanceMap::missing`); applied per phase by #19–#22 |
 | PROV-2 | Spans survive lowering | **partly enforced**: CST→AST spans exact (`ast_spans_are_exact_for_the_bootstrap_fixture`), AST→TIR errors keep offsets (`semantic_errors_keep_their_source_offset`); TIR nodes carry no provenance yet (G2) |
 | INV-ID-2 (AST level) | Reformatting changes spans, never the AST | **test** `reformatting_changes_spans_but_not_the_ast` |
+| INV-ID-2 (B3–B5) | Moving spans changes only provenance, never resolution, types or TIR | **test** `tessera-sema::reformatting_changes_provenance_but_no_semantic_value` |
+| RES-1..3, TYP-1/3 | Every path has a `Res`; every expression a `Ty`; TIR only from complete functions; independent errors each reported once | **test** `tessera-sema` unit tests (hand-built HIR, incl. a `bool` primitive table for rules TC cannot reach yet); `tessera-cli/tests/cli.rs::check_reports_every_independent_problem_once` |
+| B2–B5 ≡ bridge | The phase pipeline produces the same TIR and provenance as the bootstrap bridge it replaces, and rejects exactly what the bridge rejects plus bridge output the TIR verifier refuses (duplicate parameters) | **test** `tessera-cli/tests/sema_oracle.rs` (20k random TC sources: trivia, comments, parentheses, unknown names/types, damage) |
 | TIR-2 | A hand-written `.tir` file can be verified and lowered without B1–B4 | **test** `tessera-cli/tests/cli.rs::run_handwritten_tir_with_calls_and_branches`, `ill_typed_tir_points_into_the_tir_file` |
 | TIR-4 | TIR provenance is total | **test** `parsed_provenance_is_total_and_points_at_each_form` (`.tir` input), `tir_provenance_is_total_and_exact` (TC bridge) |
 | TIR-5 | MIR preserves TIR semantics ("what you read is what runs") | **test** `tessera-mir/tests/differential.rs`: TIR evaluator vs MIR interpreter on random well-typed modules, both overflow modes; injected lowering bugs are caught |
@@ -360,14 +370,16 @@ Deliberate non-goals: no `Phase` trait, no generic pipeline runner, no `Compiler
 | G1 | *(mostly closed)* `parse` is now a thin wrapper over the tolerant CST via the `ast` facade (first diagnostic → legacy `SyntaxError`); the fail-fast parser survives only as a `#[cfg(test)]` differential oracle (`legacy.rs`). `SyntaxError` itself is still the legacy shape | #23 |
 | G2 | *(partly closed)* TIR provenance is a side table keyed by pre-order `TirNodeId` (`FunctionProvenance`), filled from `.tir` text by the reader and from TC by the bootstrap bridge `tir_provenance`; TIR nodes have no link to a B4 `ExprId` yet because B4 does not exist | #19 / #21 |
 | G3 | `tessera-syntax` depends on `tessera-tir` (bootstrap AST→TIR + `lower_to_tc`); CST crate must not know TIR. Recorded as `TEMPORARY(#19)` in `LAYERS` | #19 |
-| G4 | Bootstrap type checking and name resolution are fused inside `to_tir`; B3/B4 do not exist as phases | #20, #21 |
+| G4 | *(mostly closed)* B3/B4 exist (`tessera-sema`) and the driver (`tsr check/tir/mir/run`) uses them. The fused bootstrap `tessera_syntax::to_tir` remains only as the differential oracle and behind `tessera_syntax::expand` | #20, #21 |
 | G5 | *(closed)* `lower_to_tc` is fallible and reports what TC cannot spell instead of approximating it (`lower_to_tc_refuses_what_tc_cannot_spell`) | — |
 | G6 | `SyntaxError { at: usize }` is not a `phases::Diagnostic` | #23 |
 | G7 | `tessera-db` exposes only stats queries (`byte_len`, `line_count`, `source_units`), no `parse` query | #9 |
-| G8 | *(mostly closed)* `tsr check` (syntax), `tsr mir` and `tsr run` exist; the CLI still calls phases directly rather than through `tessera-db` queries | #24 |
+| G8 | *(mostly closed)* `tsr check` (syntax, names, types), `tsr tir`, `tsr mir` and `tsr run` run the phases; the CLI still calls them directly rather than through `tessera-db` queries | #24 |
 | G9 | Syntax fuzz crate has several `fuzz_target!`s in a `[lib]`; not runnable with `cargo fuzz run`. Property tests in-tree cover panic-freedom on stable meanwhile | #18 |
-| G10 | `tessera-sema/src/input.rs` is not declared as a module: no `resolve` calls it yet, so it is dead code. Allow-listed in `KNOWN_UNWIRED` (INV-BUILD-1), which fails once it is wired so the entry cannot go stale | #20 |
+| G10 | *(closed)* `tessera-sema/src/input.rs` is wired as `resolve`'s input check; `KNOWN_UNWIRED` is empty | — |
 | G11 | MIR stores provenance inline on statements/terminators (`ir.rs`: "MIR ids are not stable across edits anyway"), which departs from PROV-3 and from the §8 cutoff row "equal MIR ⇒ codegen skip": a text-moving edit changes MIR values. Harmless while nothing caches MIR; decide (side table vs. accept) when the `mir(fn)`/`codegen` queries exist | #9 / #22 |
+| G12 | `tessera-hir` docs point at `docs/architecture/hir.md` for the normalization laws and dump format, but that file does not exist | #19 |
+| G13 | No effect summaries (#21): the only operation, `+`, may trap or not depending on O1, so its effect cannot be stated honestly yet | #21 / O1 |
 
 ## 7. Worked witness
 
@@ -432,24 +444,16 @@ provenance:
 
 Paths are still names; no meaning is attached. Trivia and the newline are gone from the tree but recoverable through provenance into B0/B1.
 
-**B3 — resolved HIR [proposed]**
+**B3 + B4 — resolved and typed HIR [real]** (`tessera_sema::dump`, snapshot-tested by `dump_shows_resolution_and_types`):
 
 ```
-e0 = path(a) -> local/a          e1 = path(b) -> local/b
-path(i64) at ret/param types -> prim(i64)
+(fn fn/add (sig (i64 i64) i64)
+  (e0 (binary add e1 e2) : i64)
+  (e1 (path "a") -> local/a : i64)
+  (e2 (path "b") -> local/b : i64))
 ```
 
-Adds `Res` only. An unknown name would stay `-> unresolved("b")` with a resolve diagnostic pointing at that occurrence's provenance.
-
-**B4 — typed/effect HIR [proposed]**
-
-```
-e0 : i64   e1 : i64   e2 : i64   ; inferred: operands unified, result type
-fn/add : (i64, i64) -> i64  !{}  ; effect summary: pure
-e2.overflow = UNSPECIFIED        ; open question O1: must be decided before B5/B6
-```
-
-All inferred facts appear here; provenance is unchanged.
+B3 adds the `-> local/..` bindings and the signature's types; B4 adds `: ty` on every expression. An unknown name stays `-> unresolved` with one resolve diagnostic at that occurrence's provenance, and its type is `{error}` without further diagnostics. No spans appear: provenance is unchanged and lives in the HIR tables. Still missing: the effect summary (G13; for `add` it depends on O1).
 
 **B5 — TIR [real]** (output of `tsr tir examples/bootstrap.tes`; provenance links are proposed, not printed today):
 
