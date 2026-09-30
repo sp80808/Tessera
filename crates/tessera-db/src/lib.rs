@@ -54,6 +54,7 @@ pub fn source_units(db: &dyn Db, file: SourceFile) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use salsa::Setter;
 
     #[test]
     fn updating_source_invalidates_dependent_queries() {

@@ -10,3 +10,14 @@
 coverage/
 *.profraw
 *.profdata
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
+.beads/proxieddb/
+
+# cargo-fuzz standalone crate output
+crates/*/fuzz/target/
+crates/*/fuzz/corpus/
+crates/*/fuzz/artifacts/
