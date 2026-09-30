@@ -1,65 +1,71 @@
 //! TIR integration: derive TCap from TIR functions.
+//!
+//! A `Var` reads the place of its innermost binder, resolved as
+//! `tessera_tir::verify` resolves it: the parameters are bound first, each
+//! `let` binds its name for the extent of its body (not its initializer), and
+//! the innermost binding wins. A parameter is the `Remote` place for its
+//! argument index; a `let` binder gets its own `Local` place once its
+//! initializer has been derived, and that place is dropped when the body ends.
+//! A `Var` with no binder in scope (TIR that fails verification) has no place
+//! and adds no edge.
 
 use super::graph::CapabilityGraph;
-use super::lattice::{BorrowKind, CapabilityState};
+use super::lattice::{BorrowKind, CapabilityState, PlaceId};
 use super::nodes::{PlaceNode, PlaceType, Span};
 use super::transitions::{TransitionResult, TransitionSystem};
 use std::collections::HashMap;
 use tessera_tir::{TirExpr, TirFunction, TirType};
 
-/// Context for deriving TCap from TIR.
-pub struct TCapDeriver {
+/// A function body being derived: the transition system, the binders in
+/// scope, and the next free place id. Shared by both derivers.
+struct Body {
     system: TransitionSystem,
-    param_places: Vec<PlaceNode>,
-    local_places: HashMap<String, PlaceNode>,
+    /// Binders in scope, innermost last: one entry per parameter, then one
+    /// per enclosing `let`.
+    scope: Vec<(String, PlaceId)>,
     next_place_id: u32,
 }
 
-impl TCapDeriver {
-    #[must_use]
-    pub fn new() -> Self {
-        let graph = CapabilityGraph::new();
+impl Body {
+    fn new() -> Self {
         Self {
-            system: TransitionSystem::new(graph),
-            param_places: Vec::new(),
-            local_places: HashMap::new(),
+            system: TransitionSystem::new(CapabilityGraph::new()),
+            scope: Vec::new(),
             next_place_id: 1,
         }
     }
 
-    #[must_use]
-    pub fn derive(mut self, func: &TirFunction) -> CapabilityGraph {
-        // Create parameter places (remotes)
-        for (i, param) in func.params.iter().enumerate() {
-            let place = PlaceNode::Remote {
-                id: super::lattice::PlaceId(self.next_place_id),
-                arg_index: i,
-                ty: self.tir_type_to_place_type(param.ty),
-            };
-            self.next_place_id += 1;
-            let _node_id = self.system.graph_mut().add_place(place.clone());
-            self.param_places.push(place);
+    fn fresh_place_id(&mut self) -> PlaceId {
+        let id = PlaceId(self.next_place_id);
+        self.next_place_id += 1;
+        id
+    }
 
-            // Parameters start as Exclusive (owned by caller, borrowed by callee)
-            self.system.graph_mut().set_state(
-                super::lattice::PlaceId(self.next_place_id - 1),
-                CapabilityState::exclusive(),
-            );
-        }
+    /// Add `place` to the graph and bring it into scope as `name`.
+    fn bind(&mut self, name: &str, place: PlaceNode) -> PlaceId {
+        let id = place.id();
+        self.system.graph_mut().add_place(place);
+        self.scope.push((name.to_owned(), id));
+        id
+    }
 
-        // Process function body
-        self.derive_expr(&func.body);
-
-        // Drop all locals at end of function
-        self.drop_all_locals();
-
-        self.system.graph().clone()
+    /// Place of the innermost binder named `name`.
+    fn resolve(&self, name: &str) -> Option<PlaceId> {
+        self.scope
+            .iter()
+            .rev()
+            .find(|(bound, _)| bound == name)
+            .map(|&(_, place)| place)
     }
 
     fn derive_expr(&mut self, expr: &TirExpr) {
         match expr {
-            TirExpr::Var { name, ty } => {
-                self.derive_var_read(name, *ty);
+            TirExpr::Var { name, .. } => {
+                if let Some(place) = self.resolve(name) {
+                    let _ = self
+                        .system
+                        .execute_read(place, Span::dummy(), format!("read {name}"));
+                }
             }
             TirExpr::Add { lhs, rhs, .. }
             | TirExpr::Eq { lhs, rhs }
@@ -70,9 +76,25 @@ impl TCapDeriver {
             TirExpr::Not { expr } => {
                 self.derive_expr(expr);
             }
-            TirExpr::Let { init, body, .. } => {
+            TirExpr::Let {
+                name,
+                ty,
+                init,
+                body,
+            } => {
+                // The binder is not in scope in its own initializer.
                 self.derive_expr(init);
+                let local = PlaceNode::Local {
+                    id: self.fresh_place_id(),
+                    name: name.clone(),
+                    ty: place_type(*ty),
+                };
+                let place = self.bind(name, local);
                 self.derive_expr(body);
+                self.scope.pop();
+                let _ = self
+                    .system
+                    .execute_drop(place, Span::dummy(), format!("drop {name}"));
             }
             TirExpr::If {
                 cond,
@@ -96,60 +118,47 @@ impl TCapDeriver {
             }
         }
     }
+}
 
-    fn derive_var_read(&mut self, name: &str, ty: TirType) {
-        // Find or create local place
-        let place_id = if let Some(place) = self.local_places.get(name) {
-            place.id()
-        } else if let Some(idx) = self.param_places.iter().position(|p| match p {
-            PlaceNode::Remote { arg_index, .. } => {
-                *arg_index
-                    == self
-                        .param_places
-                        .iter()
-                        .position(|p| match p {
-                            PlaceNode::Remote { arg_index, .. } if *arg_index == 0 => true, // simplified
-                            _ => false,
-                        })
-                        .unwrap_or(0)
-            } // This is wrong, need better logic
-            _ => false,
-        }) {
-            // It's a parameter
-            self.param_places[idx].id()
-        } else {
-            // Create new local
-            let place = PlaceNode::Local {
-                id: super::lattice::PlaceId(self.next_place_id),
-                name: name.to_string(),
-                ty: self.tir_type_to_place_type(ty),
+fn place_type(ty: TirType) -> PlaceType {
+    match ty {
+        TirType::I64 | TirType::Bool => PlaceType::Scalar,
+    }
+}
+
+/// Context for deriving TCap from TIR.
+pub struct TCapDeriver {
+    body: Body,
+}
+
+impl TCapDeriver {
+    #[must_use]
+    pub fn new() -> Self {
+        Self { body: Body::new() }
+    }
+
+    #[must_use]
+    pub fn derive(mut self, func: &TirFunction) -> CapabilityGraph {
+        // Create parameter places (remotes)
+        for (i, param) in func.params.iter().enumerate() {
+            let place = PlaceNode::Remote {
+                id: self.body.fresh_place_id(),
+                arg_index: i,
+                ty: place_type(param.ty),
             };
-            self.next_place_id += 1;
-            let pid = place.id();
-            self.system.graph_mut().add_place(place.clone());
-            self.local_places.insert(name.to_string(), place);
-            pid
-        };
+            let place = self.body.bind(&param.name, place);
 
-        // Execute read
-        let _ = self
-            .system
-            .execute_read(place_id, Span::dummy(), format!("read {}", name));
-    }
-
-    fn tir_type_to_place_type(&self, ty: TirType) -> PlaceType {
-        match ty {
-            TirType::I64 | TirType::Bool => PlaceType::Scalar,
-        }
-    }
-
-    fn drop_all_locals(&mut self) {
-        let places: Vec<_> = self.local_places.values().map(|p| p.id()).collect();
-        for place in places {
-            let _ = self
+            // Parameters start as Exclusive (owned by caller, borrowed by callee)
+            self.body
                 .system
-                .execute_drop(place, Span::dummy(), "drop".to_string());
+                .graph_mut()
+                .set_state(place, CapabilityState::exclusive());
         }
+
+        // Process function body; each `let` drops its local when its scope ends
+        self.body.derive_expr(&func.body);
+
+        self.body.system.graph().clone()
     }
 }
 
@@ -161,23 +170,16 @@ pub fn derive_tcap(func: &TirFunction) -> CapabilityGraph {
 
 /// Derive TCap from TIR function with borrow tracking.
 pub struct BorrowingDeriver {
-    system: TransitionSystem,
-    param_places: Vec<PlaceNode>,
-    local_places: HashMap<String, PlaceNode>,
-    active_borrows: HashMap<super::lattice::BorrowId, (super::lattice::PlaceId, BorrowKind)>,
-    next_place_id: u32,
+    body: Body,
+    active_borrows: HashMap<super::lattice::BorrowId, (PlaceId, BorrowKind)>,
 }
 
 impl BorrowingDeriver {
     #[must_use]
     pub fn new() -> Self {
-        let graph = CapabilityGraph::new();
         Self {
-            system: TransitionSystem::new(graph),
-            param_places: Vec::new(),
-            local_places: HashMap::new(),
+            body: Body::new(),
             active_borrows: HashMap::new(),
-            next_place_id: 1,
         }
     }
 
@@ -187,88 +189,21 @@ impl BorrowingDeriver {
         for (i, param) in func.params.iter().enumerate() {
             let is_ref = false; // Would need type info
             let place = PlaceNode::Remote {
-                id: super::lattice::PlaceId(self.next_place_id),
+                id: self.body.fresh_place_id(),
                 arg_index: i,
                 ty: if is_ref {
                     PlaceType::Reference { mutable: false }
                 } else {
-                    self.tir_type_to_place_type(param.ty)
+                    place_type(param.ty)
                 },
             };
-            self.next_place_id += 1;
-            self.system.graph_mut().add_place(place.clone());
-            self.param_places.push(place);
+            self.body.bind(&param.name, place);
         }
 
         // Derive body with borrow tracking
-        self.derive_expr_borrow(&func.body);
+        self.body.derive_expr(&func.body);
 
-        self.system.graph().clone()
-    }
-
-    fn derive_expr_borrow(&mut self, expr: &TirExpr) {
-        match expr {
-            TirExpr::Var { name, ty } => {
-                self.derive_var_read_borrow(name, *ty);
-            }
-            TirExpr::Add { lhs, rhs, .. }
-            | TirExpr::Eq { lhs, rhs }
-            | TirExpr::And { lhs, rhs } => {
-                self.derive_expr_borrow(lhs);
-                self.derive_expr_borrow(rhs);
-            }
-            TirExpr::Not { expr } => {
-                self.derive_expr_borrow(expr);
-            }
-            TirExpr::Let { init, body, .. } => {
-                self.derive_expr_borrow(init);
-                self.derive_expr_borrow(body);
-            }
-            TirExpr::If {
-                cond,
-                then_branch,
-                else_branch,
-                ..
-            } => {
-                self.derive_expr_borrow(cond);
-                self.derive_expr_borrow(then_branch);
-                self.derive_expr_borrow(else_branch);
-            }
-            TirExpr::Call { args, .. } => {
-                for arg in args {
-                    self.derive_expr_borrow(arg);
-                }
-            }
-            TirExpr::Int { .. } | TirExpr::Bool { .. } => {}
-        }
-    }
-
-    fn derive_var_read_borrow(&mut self, name: &str, _ty: TirType) {
-        // Simplified: just read
-        if let Some(idx) = self.param_places.iter().position(|p| match p {
-            PlaceNode::Remote { arg_index, .. } => *arg_index == self.find_param_index(name),
-            _ => false,
-        }) {
-            let place_id = self.param_places[idx].id();
-            let _ = self
-                .system
-                .execute_read(place_id, Span::dummy(), format!("read {}", name));
-        } else if let Some(place) = self.local_places.get(name) {
-            let _ = self
-                .system
-                .execute_read(place.id(), Span::dummy(), format!("read {}", name));
-        }
-    }
-
-    fn find_param_index(&self, _name: &str) -> usize {
-        // Simplified: would need proper parameter mapping
-        0
-    }
-
-    fn tir_type_to_place_type(&self, ty: TirType) -> PlaceType {
-        match ty {
-            TirType::I64 | TirType::Bool => PlaceType::Scalar,
-        }
+        self.body.system.graph().clone()
     }
 
     /// Create an immutable borrow of a place.
@@ -277,9 +212,10 @@ impl BorrowingDeriver {
         place: super::lattice::PlaceId,
         span: Span,
     ) -> TransitionResult<super::lattice::BorrowId> {
-        let (_edge, borrow_id) = self
-            .system
-            .execute_share(place, span, "share".to_string())?;
+        let (_edge, borrow_id) =
+            self.body
+                .system
+                .execute_share(place, span, "share".to_string())?;
         self.active_borrows
             .insert(borrow_id, (place, BorrowKind::Shared));
         Ok(borrow_id)
@@ -292,7 +228,8 @@ impl BorrowingDeriver {
         span: Span,
     ) -> TransitionResult<super::lattice::BorrowId> {
         let (_edge, borrow_id) =
-            self.system
+            self.body
+                .system
                 .execute_loan_mut(place, span, "loan_mut".to_string())?;
         self.active_borrows
             .insert(borrow_id, (place, BorrowKind::Mutable));
@@ -305,7 +242,8 @@ impl BorrowingDeriver {
         borrow: super::lattice::BorrowId,
         span: Span,
     ) -> TransitionResult<()> {
-        self.system
+        self.body
+            .system
             .execute_restore(borrow, span, "restore".to_string())?;
         self.active_borrows.remove(&borrow);
         Ok(())
@@ -318,7 +256,8 @@ impl BorrowingDeriver {
         span: Span,
     ) -> TransitionResult<super::lattice::BorrowId> {
         let (_edge, to_borrow) =
-            self.system
+            self.body
+                .system
                 .execute_reborrow(from, span, "reborrow".to_string())?;
         if let Some((place, _)) = self.active_borrows.get(&from) {
             self.active_borrows
@@ -334,7 +273,8 @@ impl BorrowingDeriver {
         fields: Vec<String>,
         span: Span,
     ) -> TransitionResult<()> {
-        self.system
+        self.body
+            .system
             .execute_split(place, fields, span, "split".to_string())?;
         Ok(())
     }
@@ -346,7 +286,8 @@ impl BorrowingDeriver {
         fields: Vec<String>,
         span: Span,
     ) -> TransitionResult<()> {
-        self.system
+        self.body
+            .system
             .execute_join(place, fields, span, "join".to_string())?;
         Ok(())
     }
