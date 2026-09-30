@@ -18,7 +18,7 @@
 //! Errors come out in a deterministic order: functions in module order, then
 //! function-level checks, then body nodes in pre-order ([`TirNodeId`] order).
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use crate::parse::is_valid_name;
@@ -99,12 +99,19 @@ impl std::error::Error for TirError {}
 struct Checker<'a> {
     module: &'a TirModule,
     func: &'a TirFunction,
-    scope: Vec<(&'a str, TirType)>,
+    /// Binders in scope: each name's types, innermost last. A map rather than
+    /// one list scanned per variable, which was quadratic in the number of
+    /// parameters.
+    scope: BTreeMap<&'a str, Vec<TirType>>,
     next: u32,
     errors: Vec<TirError>,
 }
 
 impl<'a> Checker<'a> {
+    fn bind(&mut self, name: &'a str, ty: TirType) {
+        self.scope.entry(name).or_default().push(ty);
+    }
+
     fn report(&mut self, node: Option<TirNodeId>, kind: TirErrorKind) {
         self.errors.push(TirError {
             func: self.func.name.clone(),
@@ -130,10 +137,10 @@ impl<'a> Checker<'a> {
             }
             TirExpr::Bool { .. } => {}
             TirExpr::Var { name, ty } => {
-                let bound = self.scope.iter().rev().find(|(n, _)| n == name);
+                let bound = self.scope.get(name.as_str()).and_then(|tys| tys.last());
                 match bound {
                     None => self.report(Some(id), TirErrorKind::UnboundVar(name.clone())),
-                    Some(&(_, declared)) if declared != *ty => self.report(
+                    Some(&declared) if declared != *ty => self.report(
                         Some(id),
                         TirErrorKind::VarTypeMismatch {
                             name: name.clone(),
@@ -169,9 +176,11 @@ impl<'a> Checker<'a> {
                     self.report(Some(id), TirErrorKind::InvalidName(name.clone()));
                 }
                 self.operand(id, "initializer of `let`", *ty, init);
-                self.scope.push((name, *ty));
+                self.bind(name, *ty);
                 self.check(body);
-                self.scope.pop();
+                if let Some(tys) = self.scope.get_mut(name.as_str()) {
+                    tys.pop();
+                }
             }
             TirExpr::If {
                 cond,
@@ -230,7 +239,7 @@ pub fn verify_function(module: &TirModule, func: &TirFunction) -> Vec<TirError> 
     let mut checker = Checker {
         module,
         func,
-        scope: Vec::new(),
+        scope: BTreeMap::new(),
         next: 0,
         errors: Vec::new(),
     };
@@ -245,7 +254,7 @@ pub fn verify_function(module: &TirModule, func: &TirFunction) -> Vec<TirError> 
         if !seen.insert(param.name.as_str()) {
             checker.report(None, TirErrorKind::DuplicateParam(param.name.clone()));
         }
-        checker.scope.push((&param.name, param.ty));
+        checker.bind(&param.name, param.ty);
     }
     if func.body.ty() != func.ret {
         checker.report(

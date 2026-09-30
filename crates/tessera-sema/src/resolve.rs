@@ -47,19 +47,6 @@ pub struct ResolvedFn {
     pub names: BTreeMap<ExprId, Res>,
 }
 
-impl ResolvedFn {
-    /// The declared type of binder `local`, or [`Ty::Error`] if it is not a
-    /// parameter.
-    #[must_use]
-    pub fn local_ty(&self, func: &FnItem, local: LocalId) -> Ty {
-        func.params
-            .iter()
-            .position(|p| p.local == local)
-            .and_then(|i| self.params.get(i).copied())
-            .unwrap_or(Ty::Error)
-    }
-}
-
 /// Resolution facts for one file, parallel to `HirModule::items`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ResolvedModule {
@@ -131,11 +118,12 @@ fn resolve_fn(
     }
 
     // Parameters are the only binders: the first of each name is in scope.
-    let mut scope: Vec<(&str, LocalId)> = Vec::new();
+    // A map, not a list: files may declare tens of thousands of parameters.
+    let mut scope: BTreeMap<&str, LocalId> = BTreeMap::new();
     for param in &func.params {
         match &func.body.local(param.local).name {
             None => declarations_ok = false,
-            Some(name) if scope.iter().any(|(n, _)| n == name) => {
+            Some(name) if scope.contains_key(name.as_str()) => {
                 declarations_ok = false;
                 diagnostics.push(error(
                     "E-resolve-duplicate-param",
@@ -143,7 +131,9 @@ fn resolve_fn(
                     site.local(param.local),
                 ));
             }
-            Some(name) => scope.push((name, param.local)),
+            Some(name) => {
+                scope.insert(name, param.local);
+            }
         }
     }
 
@@ -176,7 +166,7 @@ fn resolve_fn(
     for (i, expr) in func.body.exprs.iter().enumerate() {
         let Expr::Path(name) = expr else { continue };
         let id = ExprId(crate::input::id32(i));
-        let res = if let Some((_, local)) = scope.iter().find(|(n, _)| n == name) {
+        let res = if let Some(local) = scope.get(name.as_str()) {
             Res::Local(*local)
         } else {
             diagnostics.push(error(

@@ -71,13 +71,24 @@ fn typeck_fn(
         };
     }
     let exprs = &func.body.exprs;
+    // Declared type of each binder, indexed by `LocalId` (built once: a
+    // per-occurrence scan of the parameters would be quadratic).
+    let mut local_tys = vec![Ty::Error; func.body.locals.len()];
+    for (param, ty) in func.params.iter().zip(&rfn.params) {
+        if let Some(slot) = local_tys.get_mut(param.local.0 as usize) {
+            *slot = *ty;
+        }
+    }
     let mut tys = vec![Ty::Error; exprs.len()];
     for i in (0..exprs.len()).rev() {
         let at = |e: ExprId| tys.get(e.0 as usize).copied().unwrap_or(Ty::Error);
         tys[i] = match &exprs[i] {
             Expr::Int(_) => Ty::I64,
             Expr::Path(_) => match rfn.names.get(&ExprId(id32(i))) {
-                Some(Res::Local(local)) => rfn.local_ty(func, *local),
+                Some(Res::Local(local)) => local_tys
+                    .get(local.0 as usize)
+                    .copied()
+                    .unwrap_or(Ty::Error),
                 Some(Res::Unresolved) | None => Ty::Error,
             },
             Expr::Binary {
