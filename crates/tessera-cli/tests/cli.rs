@@ -102,7 +102,10 @@ fn errors_point_into_the_file_they_come_from() {
     let tc = fixture("bad.tes", "f add(a:i64)>i64=a+b\n");
     let (code, _, err) = tsr(&["mir", "--overflow=trapping", &tc]);
     assert_eq!(code, 1);
-    assert!(err.contains("offset 19: unbound variable `b`"), "{err}");
+    assert!(
+        err.contains("bad.tes:1:20: error[E-resolve-unbound-name]: unbound variable `b`"),
+        "{err}"
+    );
 
     let tir = fixture(
         "bad.tir",
@@ -112,6 +115,58 @@ fn errors_point_into_the_file_they_come_from() {
     assert_eq!(code, 1);
     assert!(
         err.contains("bad.tir:2:9: error[E-mir-ill-formed-tir]"),
+        "{err}"
+    );
+}
+
+/// `tsr check` runs syntax, HIR, resolution and type checking and reports
+/// every independent problem at once, in source order, without cascades.
+#[test]
+fn check_reports_every_independent_problem_once() {
+    let (code, out, err) = tsr(&["check", BOOTSTRAP]);
+    assert_eq!((code, err.as_str()), (0, ""));
+    assert_eq!(out, "ok: 1 function(s) checked (syntax, names, types)\n");
+
+    let path = fixture("multi.tes", "f add(a:i64,a:i64)>bool=b+c+\n");
+    let (code, _, err) = tsr(&["check", &path]);
+    assert_eq!(code, 1);
+    let codes: Vec<&str> = err
+        .lines()
+        .map(|l| {
+            l.split("error[")
+                .nth(1)
+                .and_then(|r| r.split(']').next())
+                .unwrap_or(l)
+        })
+        .collect();
+    assert_eq!(
+        codes,
+        [
+            "E-resolve-duplicate-param",
+            "E-resolve-unknown-type",
+            "E-resolve-unbound-name",
+            "E-resolve-unbound-name",
+            "E-syntax-expected"
+        ],
+        "{err}"
+    );
+}
+
+#[test]
+fn tir_expands_tc_through_the_phases() {
+    let (code, out, err) = tsr(&["tir", BOOTSTRAP]);
+    assert_eq!((code, err.as_str()), (0, ""));
+    let golden = std::fs::read_to_string(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../examples/bootstrap.tir"
+    ))
+    .expect("golden");
+    assert_eq!(out.trim_end(), golden.trim_end());
+    let bad = fixture("unbound.tes", "f f(a:i64)>i64=a+q\n");
+    let (code, out, err) = tsr(&["tir", &bad]);
+    assert_eq!((code, out.as_str()), (1, ""));
+    assert!(
+        err.contains(":1:18: error[E-resolve-unbound-name]"),
         "{err}"
     );
 }

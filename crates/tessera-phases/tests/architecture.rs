@@ -371,10 +371,7 @@ fn manifest_parser_understands_all_dependency_table_styles() {
 /// Files known to be unreachable from their crate root, with the issue that
 /// wires them. The test fails if one of them becomes declared, so the list
 /// cannot go stale.
-const KNOWN_UNWIRED: &[&str] = &[
-    // HIR input validation for `resolve`; dead code until #20 adds a caller.
-    "tessera-sema/src/input.rs",
-];
+const KNOWN_UNWIRED: &[&str] = &[];
 
 /// `mod NAME;` (any visibility) declared on this line, if any.
 fn declared_module(line: &str) -> Option<&str> {
