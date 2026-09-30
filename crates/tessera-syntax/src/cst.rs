@@ -134,6 +134,38 @@ impl Cst {
             }
         }
     }
+
+    /// Build a tree from an event stream over `tokens` (the full,
+    /// trivia-inclusive stream), placing trivia exactly as the parser's own
+    /// builder does. This is how a front-end other than the built-in parser, or
+    /// a test that wants tree shapes the parser never emits, produces a
+    /// [`Cst`] without touching private storage.
+    ///
+    /// Returns `None` unless the stream is well-formed: exactly one root node,
+    /// balanced `Start`/`Finish`, and `Token` indices in range and strictly
+    /// increasing. Every event stream the parser emits satisfies this.
+    #[must_use]
+    pub fn from_events(tokens: &[Token], events: &[Event]) -> Option<Cst> {
+        let (mut depth, mut roots, mut next_tok) = (0_usize, 0_usize, 0_usize);
+        for event in events {
+            match *event {
+                Event::Start(_) => {
+                    if depth == 0 {
+                        roots += 1;
+                    }
+                    depth += 1;
+                }
+                Event::Token(i) => {
+                    if depth == 0 || i >= tokens.len() || i < next_tok {
+                        return None;
+                    }
+                    next_tok = i + 1;
+                }
+                Event::Finish => depth = depth.checked_sub(1)?,
+            }
+        }
+        (depth == 0 && roots == 1).then(|| build(tokens, events))
+    }
 }
 
 /// The result of parsing one file: token stream plus tree.
