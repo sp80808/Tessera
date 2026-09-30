@@ -1,11 +1,11 @@
 //! TIR integration: derive TCap from TIR functions.
 
-use super::graph::{CapabilityGraph, EdgeKind, NodeId};
-use super::lattice::{BorrowKind, Capability, CapabilityState, PlaceId};
-use super::nodes::{BorrowNode, BorrowExtent, PlaceNode, PlaceType, Span};
-use super::transitions::{TransitionSystem, TransitionResult};
-use tessera_tir::{TirExpr, TirFunction, TirParam, TirType};
+use super::graph::CapabilityGraph;
+use super::lattice::{BorrowKind, CapabilityState};
+use super::nodes::{PlaceNode, PlaceType, Span};
+use super::transitions::{TransitionResult, TransitionSystem};
 use std::collections::HashMap;
+use tessera_tir::{TirExpr, TirFunction, TirType};
 
 /// Context for deriving TCap from TIR.
 pub struct TCapDeriver {
@@ -37,9 +37,9 @@ impl TCapDeriver {
                 ty: self.tir_type_to_place_type(param.ty),
             };
             self.next_place_id += 1;
-            let node_id = self.system.graph_mut().add_place(place.clone());
+            let _node_id = self.system.graph_mut().add_place(place.clone());
             self.param_places.push(place);
-            
+
             // Parameters start as Exclusive (owned by caller, borrowed by callee)
             self.system.graph_mut().set_state(
                 super::lattice::PlaceId(self.next_place_id - 1),
@@ -61,9 +61,9 @@ impl TCapDeriver {
             TirExpr::Var { name, ty } => {
                 self.derive_var_read(name, *ty);
             }
-            TirExpr::Add { lhs, rhs, .. } | 
-            TirExpr::Eq { lhs, rhs } |
-            TirExpr::And { lhs, rhs } => {
+            TirExpr::Add { lhs, rhs, .. }
+            | TirExpr::Eq { lhs, rhs }
+            | TirExpr::And { lhs, rhs } => {
                 self.derive_expr(lhs);
                 self.derive_expr(rhs);
             }
@@ -81,10 +81,17 @@ impl TCapDeriver {
         let place_id = if let Some(place) = self.local_places.get(name) {
             place.id()
         } else if let Some(idx) = self.param_places.iter().position(|p| match p {
-            PlaceNode::Remote { arg_index, .. } => *arg_index == self.param_places.iter().position(|p| match p {
-                PlaceNode::Remote { arg_index, .. } if *arg_index == 0 => true, // simplified
-                _ => false,
-            }).unwrap_or(0), // This is wrong, need better logic
+            PlaceNode::Remote { arg_index, .. } => {
+                *arg_index
+                    == self
+                        .param_places
+                        .iter()
+                        .position(|p| match p {
+                            PlaceNode::Remote { arg_index, .. } if *arg_index == 0 => true, // simplified
+                            _ => false,
+                        })
+                        .unwrap_or(0)
+            } // This is wrong, need better logic
             _ => false,
         }) {
             // It's a parameter
@@ -104,11 +111,9 @@ impl TCapDeriver {
         };
 
         // Execute read
-        let _ = self.system.execute_read(
-            place_id,
-            Span::dummy(),
-            format!("read {}", name),
-        );
+        let _ = self
+            .system
+            .execute_read(place_id, Span::dummy(), format!("read {}", name));
     }
 
     fn tir_type_to_place_type(&self, ty: TirType) -> PlaceType {
@@ -120,11 +125,9 @@ impl TCapDeriver {
     fn drop_all_locals(&mut self) {
         let places: Vec<_> = self.local_places.values().map(|p| p.id()).collect();
         for place in places {
-            let _ = self.system.execute_drop(
-                place,
-                Span::dummy(),
-                "drop".to_string(),
-            );
+            let _ = self
+                .system
+                .execute_drop(place, Span::dummy(), "drop".to_string());
         }
     }
 }
@@ -142,7 +145,6 @@ pub struct BorrowingDeriver {
     local_places: HashMap<String, PlaceNode>,
     active_borrows: HashMap<super::lattice::BorrowId, (super::lattice::PlaceId, BorrowKind)>,
     next_place_id: u32,
-    next_borrow_id: u32,
 }
 
 impl BorrowingDeriver {
@@ -155,7 +157,6 @@ impl BorrowingDeriver {
             local_places: HashMap::new(),
             active_borrows: HashMap::new(),
             next_place_id: 1,
-            next_borrow_id: 1,
         }
     }
 
@@ -189,9 +190,9 @@ impl BorrowingDeriver {
             TirExpr::Var { name, ty } => {
                 self.derive_var_read_borrow(name, *ty);
             }
-            TirExpr::Add { lhs, rhs, .. } |
-            TirExpr::Eq { lhs, rhs } |
-            TirExpr::And { lhs, rhs } => {
+            TirExpr::Add { lhs, rhs, .. }
+            | TirExpr::Eq { lhs, rhs }
+            | TirExpr::And { lhs, rhs } => {
                 self.derive_expr_borrow(lhs);
                 self.derive_expr_borrow(rhs);
             }
@@ -209,13 +210,17 @@ impl BorrowingDeriver {
             _ => false,
         }) {
             let place_id = self.param_places[idx].id();
-            let _ = self.system.execute_read(place_id, Span::dummy(), format!("read {}", name));
+            let _ = self
+                .system
+                .execute_read(place_id, Span::dummy(), format!("read {}", name));
         } else if let Some(place) = self.local_places.get(name) {
-            let _ = self.system.execute_read(place.id(), Span::dummy(), format!("read {}", name));
+            let _ = self
+                .system
+                .execute_read(place.id(), Span::dummy(), format!("read {}", name));
         }
     }
 
-    fn find_param_index(&self, name: &str) -> usize {
+    fn find_param_index(&self, _name: &str) -> usize {
         // Simplified: would need proper parameter mapping
         0
     }
@@ -227,44 +232,82 @@ impl BorrowingDeriver {
     }
 
     /// Create an immutable borrow of a place.
-    pub fn borrow_shared(&mut self, place: super::lattice::PlaceId, span: Span) -> TransitionResult<super::lattice::BorrowId> {
-        let (edge, borrow_id) = self.system.execute_share(place, span, "share".to_string())?;
-        self.active_borrows.insert(borrow_id, (place, BorrowKind::Shared));
+    pub fn borrow_shared(
+        &mut self,
+        place: super::lattice::PlaceId,
+        span: Span,
+    ) -> TransitionResult<super::lattice::BorrowId> {
+        let (_edge, borrow_id) = self
+            .system
+            .execute_share(place, span, "share".to_string())?;
+        self.active_borrows
+            .insert(borrow_id, (place, BorrowKind::Shared));
         Ok(borrow_id)
     }
 
     /// Create a mutable borrow of a place.
-    pub fn borrow_mut(&mut self, place: super::lattice::PlaceId, span: Span) -> TransitionResult<super::lattice::BorrowId> {
-        let (edge, borrow_id) = self.system.execute_loan_mut(place, span, "loan_mut".to_string())?;
-        self.active_borrows.insert(borrow_id, (place, BorrowKind::Mutable));
+    pub fn borrow_mut(
+        &mut self,
+        place: super::lattice::PlaceId,
+        span: Span,
+    ) -> TransitionResult<super::lattice::BorrowId> {
+        let (_edge, borrow_id) =
+            self.system
+                .execute_loan_mut(place, span, "loan_mut".to_string())?;
+        self.active_borrows
+            .insert(borrow_id, (place, BorrowKind::Mutable));
         Ok(borrow_id)
     }
 
     /// End a borrow and restore the place.
-    pub fn end_borrow(&mut self, borrow: super::lattice::BorrowId, span: Span) -> TransitionResult<()> {
-        self.system.execute_restore(borrow, span, "restore".to_string())?;
+    pub fn end_borrow(
+        &mut self,
+        borrow: super::lattice::BorrowId,
+        span: Span,
+    ) -> TransitionResult<()> {
+        self.system
+            .execute_restore(borrow, span, "restore".to_string())?;
         self.active_borrows.remove(&borrow);
         Ok(())
     }
 
     /// Reborrow mutably from an existing mutable borrow.
-    pub fn reborrow_mut(&mut self, from: super::lattice::BorrowId, span: Span) -> TransitionResult<super::lattice::BorrowId> {
-        let (edge, to_borrow) = self.system.execute_reborrow(from, span, "reborrow".to_string())?;
+    pub fn reborrow_mut(
+        &mut self,
+        from: super::lattice::BorrowId,
+        span: Span,
+    ) -> TransitionResult<super::lattice::BorrowId> {
+        let (_edge, to_borrow) =
+            self.system
+                .execute_reborrow(from, span, "reborrow".to_string())?;
         if let Some((place, _)) = self.active_borrows.get(&from) {
-            self.active_borrows.insert(to_borrow, (*place, BorrowKind::Mutable));
+            self.active_borrows
+                .insert(to_borrow, (*place, BorrowKind::Mutable));
         }
         Ok(to_borrow)
     }
 
     /// Split a composite place into fields.
-    pub fn split(&mut self, place: super::lattice::PlaceId, fields: Vec<String>, span: Span) -> TransitionResult<()> {
-        self.system.execute_split(place, fields, span, "split".to_string())?;
+    pub fn split(
+        &mut self,
+        place: super::lattice::PlaceId,
+        fields: Vec<String>,
+        span: Span,
+    ) -> TransitionResult<()> {
+        self.system
+            .execute_split(place, fields, span, "split".to_string())?;
         Ok(())
     }
 
     /// Join fields back into a composite place.
-    pub fn join(&mut self, place: super::lattice::PlaceId, fields: Vec<String>, span: Span) -> TransitionResult<()> {
-        self.system.execute_join(place, fields, span, "join".to_string())?;
+    pub fn join(
+        &mut self,
+        place: super::lattice::PlaceId,
+        fields: Vec<String>,
+        span: Span,
+    ) -> TransitionResult<()> {
+        self.system
+            .execute_join(place, fields, span, "join".to_string())?;
         Ok(())
     }
 }

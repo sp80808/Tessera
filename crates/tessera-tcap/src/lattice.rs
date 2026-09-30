@@ -116,13 +116,14 @@ impl CapabilityState {
         if self.is_partial || other.is_partial {
             return false;
         }
-        match (self.capability, other.capability) {
-            (Capability::None, _) | (_, Capability::None) => true,
-            (Capability::Read, Capability::Read) => true,
-            (Capability::Exclusive, Capability::Exclusive) => true,
-            (Capability::Write, Capability::Write) => true,
-            _ => false,
-        }
+        matches!(
+            (self.capability, other.capability),
+            (Capability::None, _)
+                | (_, Capability::None)
+                | (Capability::Read, Capability::Read)
+                | (Capability::Exclusive, Capability::Exclusive)
+                | (Capability::Write, Capability::Write)
+        )
     }
 
     /// Join two compatible states (used at control flow merges).

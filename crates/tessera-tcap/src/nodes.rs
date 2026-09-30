@@ -1,7 +1,7 @@
 //! Place and borrow nodes for the TCap graph.
 
-use std::fmt;
 use super::lattice::{BorrowId, BorrowKind, PlaceId};
+use std::fmt;
 
 /// A place in memory that can hold capabilities.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -184,7 +184,11 @@ impl Span {
 
     #[must_use]
     pub const fn dummy() -> Self {
-        Self { file: 0, start: 0, end: 0 }
+        Self {
+            file: 0,
+            start: 0,
+            end: 0,
+        }
     }
 }
 

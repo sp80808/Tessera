@@ -1,8 +1,8 @@
 //! Capability state transition system.
 
-use super::graph::{CapabilityGraph, Edge, EdgeKind, Node, NodeId};
+use super::graph::{CapabilityGraph, Edge, EdgeKind, NodeId};
 use super::lattice::{BorrowId, BorrowKind, BorrowRef, Capability, CapabilityState, PlaceId};
-use super::nodes::{BorrowNode, BorrowExtent, PlaceNode, Span};
+use super::nodes::{BorrowExtent, BorrowNode, PlaceNode, Span};
 use thiserror::Error;
 
 /// Errors during capability transitions.
@@ -29,7 +29,10 @@ pub enum TransitionError {
     #[error("borrow {borrow} still active at point {point}")]
     BorrowActive { borrow: BorrowId, point: u32 },
     #[error("place {place} has outstanding borrows: {borrows:?}")]
-    OutstandingBorrows { place: PlaceId, borrows: Vec<BorrowRef> },
+    OutstandingBorrows {
+        place: PlaceId,
+        borrows: Vec<BorrowRef>,
+    },
     #[error("place {place} is partially moved")]
     PartiallyMoved { place: PlaceId },
 }
@@ -68,14 +71,17 @@ impl TransitionSystem {
         tir_op: String,
     ) -> TransitionResult<Edge> {
         let from_state = self.graph.state(from).cloned().unwrap_or_default();
-        
+
         if !from_state.capability.can_move() {
-            return Err(TransitionError::CannotMove { place: from, cap: from_state.capability });
+            return Err(TransitionError::CannotMove {
+                place: from,
+                cap: from_state.capability,
+            });
         }
         if !from_state.borrows.is_empty() {
-            return Err(TransitionError::OutstandingBorrows { 
-                place: from, 
-                borrows: from_state.borrows.clone() 
+            return Err(TransitionError::OutstandingBorrows {
+                place: from,
+                borrows: from_state.borrows.clone(),
             });
         }
         if from_state.is_partial {
@@ -85,7 +91,11 @@ impl TransitionSystem {
         let mut after_from = from_state.clone();
         after_from.capability = Capability::None;
 
-        let mut after_to = self.graph.state(to).cloned().unwrap_or_else(CapabilityState::exclusive);
+        let mut after_to = self
+            .graph
+            .state(to)
+            .cloned()
+            .unwrap_or_else(CapabilityState::exclusive);
         after_to.capability = Capability::Exclusive;
 
         self.graph.set_state(from, after_from.clone());
@@ -93,7 +103,7 @@ impl TransitionSystem {
 
         let from_node = self.find_place_node(from);
         let to_node = self.find_place_node(to);
-        
+
         Ok(self.graph.add_edge(
             EdgeKind::Move,
             from_node,
@@ -113,21 +123,23 @@ impl TransitionSystem {
         tir_op: String,
     ) -> TransitionResult<(Edge, BorrowId)> {
         let place_state = self.graph.state(place).cloned().unwrap_or_default();
-        
+
         if !place_state.capability.can_share() {
-            return Err(TransitionError::CannotShare { place, cap: place_state.capability });
+            return Err(TransitionError::CannotShare {
+                place,
+                cap: place_state.capability,
+            });
         }
 
-        let borrow_id = BorrowId(self.graph.next_borrow_id);
-        self.graph.next_borrow_id += 1;
+        let borrow_id = self.graph.next_borrow_id();
 
         let borrow = BorrowNode {
             id: borrow_id,
             kind: BorrowKind::Shared,
             place,
-            extent: BorrowExtent::Lexical { 
-                start: self.graph.current_point(), 
-                end: self.graph.current_point() + 1 
+            extent: BorrowExtent::Lexical {
+                start: self.graph.current_point(),
+                end: self.graph.current_point() + 1,
             },
             origin_span: span,
         };
@@ -143,7 +155,7 @@ impl TransitionSystem {
         self.graph.set_state(place, after_place.clone());
 
         let place_node = self.find_place_node(place);
-        
+
         let edge = self.graph.add_edge(
             EdgeKind::Share,
             place_node,
@@ -165,27 +177,29 @@ impl TransitionSystem {
         tir_op: String,
     ) -> TransitionResult<(Edge, BorrowId)> {
         let place_state = self.graph.state(place).cloned().unwrap_or_default();
-        
+
         if !place_state.capability.can_loan_mut() {
-            return Err(TransitionError::CannotLoanMut { place, cap: place_state.capability });
+            return Err(TransitionError::CannotLoanMut {
+                place,
+                cap: place_state.capability,
+            });
         }
         if !place_state.borrows.is_empty() {
-            return Err(TransitionError::OutstandingBorrows { 
-                place, 
-                borrows: place_state.borrows.clone() 
+            return Err(TransitionError::OutstandingBorrows {
+                place,
+                borrows: place_state.borrows.clone(),
             });
         }
 
-        let borrow_id = BorrowId(self.graph.next_borrow_id);
-        self.graph.next_borrow_id += 1;
+        let borrow_id = self.graph.next_borrow_id();
 
         let borrow = BorrowNode {
             id: borrow_id,
             kind: BorrowKind::Mutable,
             place,
-            extent: BorrowExtent::Lexical { 
-                start: self.graph.current_point(), 
-                end: self.graph.current_point() + 1 
+            extent: BorrowExtent::Lexical {
+                start: self.graph.current_point(),
+                end: self.graph.current_point() + 1,
             },
             origin_span: span,
         };
@@ -201,7 +215,7 @@ impl TransitionSystem {
         self.graph.set_state(place, after_place.clone());
 
         let place_node = self.find_place_node(place);
-        
+
         let edge = self.graph.add_edge(
             EdgeKind::LoanMut,
             place_node,
@@ -222,22 +236,23 @@ impl TransitionSystem {
         span: Span,
         tir_op: String,
     ) -> TransitionResult<(Edge, BorrowId)> {
-        let from_borrow_node = self.graph.get_borrow(from_borrow)
-            .ok_or(TransitionError::CannotReborrow { 
-                borrow: from_borrow, 
-                kind: BorrowKind::Shared 
+        let from_borrow_node = self
+            .graph
+            .get_borrow(from_borrow)
+            .ok_or(TransitionError::CannotReborrow {
+                borrow: from_borrow,
+                kind: BorrowKind::Shared,
             })?
             .clone();
 
         if from_borrow_node.kind != BorrowKind::Mutable {
-            return Err(TransitionError::CannotReborrow { 
-                borrow: from_borrow, 
-                kind: from_borrow_node.kind 
+            return Err(TransitionError::CannotReborrow {
+                borrow: from_borrow,
+                kind: from_borrow_node.kind,
             });
         }
 
-        let to_borrow_id = BorrowId(self.graph.next_borrow_id);
-        self.graph.next_borrow_id += 1;
+        let to_borrow_id = self.graph.next_borrow_id();
 
         let to_borrow = BorrowNode {
             id: to_borrow_id,
@@ -270,7 +285,9 @@ impl TransitionSystem {
         span: Span,
         tir_op: String,
     ) -> TransitionResult<Edge> {
-        let borrow_node = self.graph.get_borrow(borrow)
+        let borrow_node = self
+            .graph
+            .get_borrow(borrow)
             .ok_or(TransitionError::CannotRestore { borrow })?
             .clone();
 
@@ -279,11 +296,15 @@ impl TransitionSystem {
 
         // Remove this borrow from the place's borrows
         place_state.borrows.retain(|b| b.id != borrow);
-        
+
         // Restore capability based on remaining borrows
         place_state.capability = if place_state.borrows.is_empty() {
             Capability::Exclusive
-        } else if place_state.borrows.iter().any(|b| b.kind == BorrowKind::Mutable) {
+        } else if place_state
+            .borrows
+            .iter()
+            .any(|b| b.kind == BorrowKind::Mutable)
+        {
             Capability::None
         } else {
             Capability::Read
@@ -316,14 +337,17 @@ impl TransitionSystem {
         tir_op: String,
     ) -> TransitionResult<Vec<Edge>> {
         let place_state = self.graph.state(place).cloned().unwrap_or_default();
-        
-        if !matches!(place_state.capability, Capability::Exclusive | Capability::Write) {
+
+        if !matches!(
+            place_state.capability,
+            Capability::Exclusive | Capability::Write
+        ) {
             return Err(TransitionError::CannotSplit { place });
         }
         if !place_state.borrows.is_empty() {
-            return Err(TransitionError::OutstandingBorrows { 
-                place, 
-                borrows: place_state.borrows.clone() 
+            return Err(TransitionError::OutstandingBorrows {
+                place,
+                borrows: place_state.borrows.clone(),
             });
         }
 
@@ -331,8 +355,7 @@ impl TransitionSystem {
         let place_node = self.find_place_node(place);
 
         for field in fields {
-            let field_place_id = PlaceId(self.graph.next_place_id);
-            self.graph.next_place_id += 1;
+            let field_place_id = self.graph.next_place_id();
 
             let field_node = PlaceNode::Field {
                 id: field_place_id,
@@ -342,7 +365,8 @@ impl TransitionSystem {
             };
             let field_node_id = self.graph.add_place(field_node);
 
-            self.graph.set_state(field_place_id, CapabilityState::exclusive());
+            self.graph
+                .set_state(field_place_id, CapabilityState::exclusive());
 
             let edge = self.graph.add_edge(
                 EdgeKind::Split,
@@ -373,7 +397,7 @@ impl TransitionSystem {
         tir_op: String,
     ) -> TransitionResult<Edge> {
         let place_state = self.graph.state(place).cloned().unwrap_or_default();
-        
+
         if !place_state.is_partial {
             return Err(TransitionError::CannotJoin { place });
         }
@@ -396,8 +420,9 @@ impl TransitionSystem {
         self.graph.set_state(place, after_place.clone());
 
         let place_node = self.find_place_node(place);
-        let field_node = self.find_field_place(place, &field_names[0])
-            .and_then(|id| self.find_place_node(id))
+        let field_node = self
+            .find_field_place(place, &field_names[0])
+            .map(|id| self.find_place_node(id))
             .unwrap_or(place_node);
 
         Ok(self.graph.add_edge(
@@ -419,14 +444,21 @@ impl TransitionSystem {
         tir_op: String,
     ) -> TransitionResult<Edge> {
         let place_state = self.graph.state(place).cloned().unwrap_or_default();
-        
+
         if !place_state.capability.can_write() {
-            return Err(TransitionError::CannotWrite { place, cap: place_state.capability });
+            return Err(TransitionError::CannotWrite {
+                place,
+                cap: place_state.capability,
+            });
         }
-        if place_state.borrows.iter().any(|b| b.kind == BorrowKind::Mutable) {
-            return Err(TransitionError::OutstandingBorrows { 
-                place, 
-                borrows: place_state.borrows.clone() 
+        if place_state
+            .borrows
+            .iter()
+            .any(|b| b.kind == BorrowKind::Mutable)
+        {
+            return Err(TransitionError::OutstandingBorrows {
+                place,
+                borrows: place_state.borrows.clone(),
             });
         }
 
@@ -455,9 +487,12 @@ impl TransitionSystem {
         tir_op: String,
     ) -> TransitionResult<Edge> {
         let place_state = self.graph.state(place).cloned().unwrap_or_default();
-        
+
         if !place_state.capability.can_read() {
-            return Err(TransitionError::CannotRead { place, cap: place_state.capability });
+            return Err(TransitionError::CannotRead {
+                place,
+                cap: place_state.capability,
+            });
         }
 
         let place_node = self.find_place_node(place);
@@ -481,11 +516,11 @@ impl TransitionSystem {
         tir_op: String,
     ) -> TransitionResult<Edge> {
         let place_state = self.graph.state(place).cloned().unwrap_or_default();
-        
+
         if !place_state.borrows.is_empty() {
-            return Err(TransitionError::OutstandingBorrows { 
-                place, 
-                borrows: place_state.borrows.clone() 
+            return Err(TransitionError::OutstandingBorrows {
+                place,
+                borrows: place_state.borrows.clone(),
             });
         }
 
@@ -506,34 +541,40 @@ impl TransitionSystem {
         ))
     }
 
-    fn find_place_node(&self, place: PlaceId) -> NodeId {
-        self.graph.nodes().iter()
+    fn find_place_node(&mut self, place: PlaceId) -> NodeId {
+        self.graph
+            .nodes()
+            .iter()
             .find_map(|(id, node)| match node {
                 crate::graph::Node::Place(p) if p.id() == place => Some(*id),
                 _ => None,
             })
             .unwrap_or_else(|| {
                 // Create a dummy node if not found
-                let id = NodeId(self.graph.next_node_id);
-                id
+
+                self.graph.next_node_id()
             })
     }
 
-    fn find_borrow_node(&self, borrow: BorrowId) -> NodeId {
-        self.graph.nodes().iter()
+    fn find_borrow_node(&mut self, borrow: BorrowId) -> NodeId {
+        self.graph
+            .nodes()
+            .iter()
             .find_map(|(id, node)| match node {
                 crate::graph::Node::Borrow(b) if b.id == borrow => Some(*id),
                 _ => None,
             })
-            .unwrap_or_else(|| {
-                let id = NodeId(self.graph.next_node_id);
-                id
-            })
+            .unwrap_or_else(|| self.graph.next_node_id())
     }
 
     fn find_field_place(&self, base: PlaceId, field: &str) -> Option<PlaceId> {
         self.graph.places().find_map(|p| match p {
-            PlaceNode::Field { id, base: b, field: f, .. } if *b == base && f == field => Some(*id),
+            PlaceNode::Field {
+                id,
+                base: b,
+                field: f,
+                ..
+            } if *b == base && f == field => Some(*id),
             _ => None,
         })
     }

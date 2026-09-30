@@ -1,9 +1,9 @@
 //! Capability graph structure with nodes and edges.
 
+use super::lattice::{BorrowId, CapabilityState, PlaceId};
+use super::nodes::{BorrowNode, PlaceNode, Span};
 use std::collections::HashMap;
 use std::fmt;
-use super::lattice::{BorrowId, Capability, CapabilityState, PlaceId};
-use super::nodes::{BorrowNode, PlaceNode, ProjectionNode, Span};
 
 /// Unique identifier for graph nodes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -156,7 +156,8 @@ impl CapabilityGraph {
         self.next_node_id += 1;
         let place_id = place.id();
         self.nodes.insert(id, Node::Place(place));
-        self.place_states.insert(place_id, CapabilityState::exclusive());
+        self.place_states
+            .insert(place_id, CapabilityState::exclusive());
         id
     }
 
@@ -174,6 +175,7 @@ impl CapabilityGraph {
     }
 
     /// Add an edge to the graph.
+    #[allow(clippy::too_many_arguments)] // flat edge record; a builder is deferred until #12 stabilizes
     pub fn add_edge(
         &mut self,
         kind: EdgeKind,
@@ -257,7 +259,6 @@ impl CapabilityGraph {
     }
 
     /// Get all places.
-    #[must_use]
     pub fn places(&self) -> impl Iterator<Item = &PlaceNode> {
         self.nodes.values().filter_map(|n| match n {
             Node::Place(p) => Some(p),
@@ -266,7 +267,6 @@ impl CapabilityGraph {
     }
 
     /// Get all borrows.
-    #[must_use]
     pub fn borrows(&self) -> impl Iterator<Item = &BorrowNode> {
         self.borrow_nodes.values()
     }
@@ -274,11 +274,13 @@ impl CapabilityGraph {
     /// Find place by name (for locals/remotes).
     #[must_use]
     pub fn find_place(&self, name: &str) -> Option<PlaceId> {
-        self.places().find(|p| match p {
-            PlaceNode::Local { name: n, .. } => n == name,
-            PlaceNode::Remote { arg_index, .. } => format!("arg#{arg_index}") == name,
-            _ => false,
-        }).map(|p| p.id())
+        self.places()
+            .find(|p| match p {
+                PlaceNode::Local { name: n, .. } => n == name,
+                PlaceNode::Remote { arg_index, .. } => format!("arg#{arg_index}") == name,
+                _ => false,
+            })
+            .map(|p| p.id())
     }
 
     /// Get the next node ID and increment.

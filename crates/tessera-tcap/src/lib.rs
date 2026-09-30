@@ -19,10 +19,6 @@
 //! 6. field-sensitive split/join
 //! 7. non-lexical shortening
 
-use std::collections::{HashMap, HashSet};
-use std::fmt;
-use tessera_tir::{TirExpr, TirFunction, TirParam, TirType};
-
 pub mod debug;
 pub mod derive;
 pub mod graph;
