@@ -1,7 +1,12 @@
 [workspace]
 members = [
+    "crates/tessera-phases",
     "crates/tessera-db",
     "crates/tessera-syntax",
+    "crates/tessera-hir",
+    "crates/tessera-sema",
+    "crates/tessera-mir",
+    "crates/tessera-tokenbench",
     "crates/tessera-tir",
     "crates/tessera-tcap",
     "crates/tessera-cli",

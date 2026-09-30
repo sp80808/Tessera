@@ -1,20 +1,69 @@
 [package]
 name = "tessera-syntax-fuzz"
-version = "0.0.1"
+version = "0.0.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-
-[workspace]
-
-[lib]
-name = "fuzz_target"
-path = "fuzz_target.rs"
+description = "cargo-fuzz targets for tessera-syntax (issue #18, gap G9); see README.md"
+# Explicit target lists: nothing is auto-discovered (the volume this repo is
+# developed on litters directories with `._*` stub files).
+autobins = false
+autotests = false
+autoexamples = false
+autobenches = false
 
 [package.metadata]
 cargo-fuzz = true
 
+# Standalone workspace: excluded from the repository workspace on purpose (it
+# needs nightly + libFuzzer; `cargo build --workspace` must not).
+[workspace]
+members = ["."]
+
+[lib]
+name = "tessera_syntax_fuzz"
+path = "src/lib.rs"
+
+[features]
+# Count how often each branch is reached and print the totals once at process
+# exit (`cargo fuzz run --features stats <target>`). Off by default.
+stats = []
+
 [dependencies]
+libfuzzer-sys = "0.4"
+arbitrary = { version = "1", features = ["derive"] }
 tessera-syntax = { path = ".." }
-arbitrary = { version = "1.3", features = ["derive"] }
-libfuzzer-sys = { version = "0.4", features = ["link_libfuzzer"] }
+tessera-phases = { path = "../../tessera-phases" }
+tessera-tir = { path = "../../tessera-tir" }
+
+[[bin]]
+name = "lexer"
+path = "fuzz_targets/lexer.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "parse_cst"
+path = "fuzz_targets/parse_cst.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "frontend"
+path = "fuzz_targets/frontend.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "frontend_structured"
+path = "fuzz_targets/frontend_structured.rs"
+test = false
+doc = false
+bench = false
+
+[[test]]
+name = "replay"
+path = "tests/replay.rs"

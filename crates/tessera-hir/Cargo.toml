@@ -1,0 +1,16 @@
+[package]
+name = "tessera-hir"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Normalized HIR (contract B2): per-body arenas, stable IDs, provenance side tables; see docs/architecture/compiler-phases.md"
+
+[lib]
+name = "tessera_hir"
+path = "src/lib.rs"
+
+[dependencies]
+tessera-phases = { path = "../tessera-phases" }
+tessera-syntax = { path = "../tessera-syntax" }

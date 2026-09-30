@@ -1,7 +1,8 @@
 use criterion::{
     BatchSize, BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
 };
-use tessera_syntax::{expand, fmt, parse};
+use tessera_phases::FileId;
+use tessera_syntax::{cst::parse_file, expand, fmt, lexer, parse};
 
 fn bench_parse(c: &mut Criterion) {
     let mut group = c.benchmark_group("parse");
@@ -235,6 +236,44 @@ fn count_tokens(expr: &tessera_syntax::AstExpr) -> usize {
     }
 }
 
+/// A function whose body is a chain of `terms` additions: scales input size
+/// without changing the grammar, so complexity problems show up as slope.
+fn chain_source(terms: usize) -> String {
+    let body = vec!["a"; terms].join("+");
+    format!("f chain(a:i64)>i64={body}")
+}
+
+/// Storage/complexity evidence for #18: lex, tolerant parse, and the
+/// AST facade at growing sizes, plus a malformed variant (recovery cost).
+/// Full reparse is the only reparse until incremental parsing exists, so
+/// "reparse after edit" == `parse_file` on the edited text.
+fn bench_cst_scaling(c: &mut Criterion) {
+    let mut group = c.benchmark_group("cst_scaling");
+    for terms in [100_usize, 1_000, 10_000, 50_000] {
+        let src = chain_source(terms);
+        group.throughput(Throughput::Bytes(src.len() as u64));
+        group.bench_with_input(BenchmarkId::new("lex", terms), &src, |b, s| {
+            b.iter(|| lexer::lex(black_box(s)));
+        });
+        group.bench_with_input(BenchmarkId::new("parse_file", terms), &src, |b, s| {
+            b.iter(|| parse_file(FileId(0), black_box(s)));
+        });
+        // recovery path: chop the last term so the tail is malformed
+        let broken = format!("{src}+");
+        group.bench_with_input(
+            BenchmarkId::new("parse_file_malformed", terms),
+            &broken,
+            |b, s| {
+                b.iter(|| parse_file(FileId(0), black_box(s)));
+            },
+        );
+        group.bench_with_input(BenchmarkId::new("parse_ast", terms), &src, |b, s| {
+            b.iter(|| parse(black_box(s)).expect("ok"));
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_parse,
@@ -243,5 +282,6 @@ criterion_group!(
     bench_roundtrip,
     bench_fmt_idempotent,
     bench_token_count,
+    bench_cst_scaling,
 );
 criterion_main!(benches);

@@ -1,0 +1,63 @@
+{
+  "version": "1.0",
+  "truncation": null,
+  "padding": null,
+  "added_tokens": [
+    {"id": 0, "content": "[UNK]", "single_word": false, "lstrip": false, "rstrip": false, "normalized": false, "special": true}
+  ],
+  "normalizer": null,
+  "pre_tokenizer": null,
+  "post_processor": null,
+  "decoder": null,
+  "model": {
+    "type": "BPE",
+    "dropout": null,
+    "unk_token": "[UNK]",
+    "continuing_subword_prefix": null,
+    "end_of_word_suffix": null,
+    "fuse_unk": false,
+    "byte_fallback": false,
+    "ignore_merges": false,
+    "vocab": {
+      "[UNK]": 0,
+      "f": 1,
+      " ": 2,
+      "a": 3,
+      "d": 4,
+      "(": 5,
+      ":": 6,
+      "i": 7,
+      "6": 8,
+      "4": 9,
+      ",": 10,
+      "b": 11,
+      ")": 12,
+      ">": 13,
+      "=": 14,
+      "+": 15,
+      "\n": 16,
+      "ad": 17,
+      "add": 18,
+      "i6": 19,
+      "i64": 20,
+      "f ": 21,
+      "a:": 22,
+      "b:": 23,
+      "+b": 24,
+      ")>": 25,
+      "=a": 26
+    },
+    "merges": [
+      ["a", "d"],
+      ["ad", "d"],
+      ["i", "6"],
+      ["i6", "4"],
+      ["f", " "],
+      ["a", ":"],
+      ["b", ":"],
+      ["+", "b"],
+      [")", ">"],
+      ["=", "a"]
+    ]
+  }
+}

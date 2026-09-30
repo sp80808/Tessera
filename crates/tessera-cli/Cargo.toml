@@ -11,5 +11,6 @@ name = "tsr"
 path = "src/main.rs"
 
 [dependencies]
+tessera-phases = { path = "../tessera-phases" }
 tessera-db = { path = "../tessera-db" }
 tessera-syntax = { path = "../tessera-syntax" }

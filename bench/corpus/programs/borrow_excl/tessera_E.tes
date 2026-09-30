@@ -1,0 +1,2 @@
+f bump(x:&!i64){*x+=1}
+f run(v:i64)>i64={let c=v;bump(&!c);c}

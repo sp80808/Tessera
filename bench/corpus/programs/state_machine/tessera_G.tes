@@ -1,0 +1,2 @@
+enum St{Idle,Run,Done}
+f next(s:St)>St=s?{Idle:Run,Run:Done,Done:Idle}

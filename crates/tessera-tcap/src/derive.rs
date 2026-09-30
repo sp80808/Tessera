@@ -70,6 +70,27 @@ impl TCapDeriver {
             TirExpr::Not { expr } => {
                 self.derive_expr(expr);
             }
+            TirExpr::Let { init, body, .. } => {
+                self.derive_expr(init);
+                self.derive_expr(body);
+            }
+            TirExpr::If {
+                cond,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                // Prototype: both branches are visited in sequence; per-branch
+                // capability joins belong to #3/#12.
+                self.derive_expr(cond);
+                self.derive_expr(then_branch);
+                self.derive_expr(else_branch);
+            }
+            TirExpr::Call { args, .. } => {
+                for arg in args {
+                    self.derive_expr(arg);
+                }
+            }
             TirExpr::Int { .. } | TirExpr::Bool { .. } => {
                 // Literals don't affect capability state
             }
@@ -198,6 +219,25 @@ impl BorrowingDeriver {
             }
             TirExpr::Not { expr } => {
                 self.derive_expr_borrow(expr);
+            }
+            TirExpr::Let { init, body, .. } => {
+                self.derive_expr_borrow(init);
+                self.derive_expr_borrow(body);
+            }
+            TirExpr::If {
+                cond,
+                then_branch,
+                else_branch,
+                ..
+            } => {
+                self.derive_expr_borrow(cond);
+                self.derive_expr_borrow(then_branch);
+                self.derive_expr_borrow(else_branch);
+            }
+            TirExpr::Call { args, .. } => {
+                for arg in args {
+                    self.derive_expr_borrow(arg);
+                }
             }
             TirExpr::Int { .. } | TirExpr::Bool { .. } => {}
         }

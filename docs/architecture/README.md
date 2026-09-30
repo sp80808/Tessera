@@ -4,6 +4,8 @@ Architecture documents explain **how the implementation is organized**. They are
 
 ## Current architecture
 
+- [Compiler phase contracts and representation invariants](compiler-phases.md) (#17)
+- [Provisional syntax lexicon register](syntax-lexicon.md)
 - [Incremental semantic query engine](incremental-query-engine.md)
 - [Architecture decisions](decisions/README.md)
 

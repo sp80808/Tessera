@@ -1,0 +1,7 @@
+# Vocabulary files are placed here by the user and pinned by sha256 in
+# tokenizers.json. They are never committed.
+/tokenizers/
+
+# Scratch output of `tess-tokenbench run` with default flags.
+/results/latest.json
+/results/latest.md
