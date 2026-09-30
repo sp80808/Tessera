@@ -1,8 +1,8 @@
 use std::{env, ffi::OsString, fs, process::ExitCode};
 
-use tessera_db::{Database, SourceFile, byte_len, line_count, source_units};
-use tessera_phases::{DiagnosticSet, FileId, Severity};
-use tessera_syntax::{cst::parse_file, expand, fmt, lexer};
+use tessera_db::{Database, SourceFile, byte_len, line_count, parse, source_units};
+use tessera_phases::{DiagnosticSet, Severity};
+use tessera_syntax::{expand, fmt, lexer};
 
 mod pipeline;
 
@@ -80,7 +80,13 @@ fn run_tokens(text: &str) -> ExitCode {
 }
 
 fn run_check(text: &str, path: &std::ffi::OsStr) -> ExitCode {
-    let out = parse_file(FileId(0), text);
+    let db = Database::default();
+    let file = SourceFile::new(
+        &db,
+        path.to_string_lossy().into_owned(),
+        text.to_owned(),
+    );
+    let out = parse(&db, file);
     eprint!(
         "{}",
         render(&path.to_string_lossy(), text, &out.diagnostics)
@@ -237,7 +243,9 @@ mod tests {
     #[test]
     fn check_renders_recovered_diagnostics_in_source_order() {
         let text = "f x()>i64=\n";
-        let out = parse_file(FileId(0), text);
+        let db = Database::default();
+        let file = SourceFile::new(&db, "t.tes".to_owned(), text.to_owned());
+        let out = parse(&db, file);
         let rendered = render("t.tes", text, &out.diagnostics);
         assert_eq!(
             rendered,

@@ -1123,6 +1123,8 @@ name = "tessera-db"
 version = "0.0.1"
 dependencies = [
  "salsa",
+ "tessera-phases",
+ "tessera-syntax",
 ]
 
 [[package]]

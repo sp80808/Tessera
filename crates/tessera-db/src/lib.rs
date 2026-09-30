@@ -7,6 +7,9 @@
 #[salsa::db]
 pub trait Db: salsa::Database {}
 
+use tessera_phases::{FileId, PhaseOutput};
+use tessera_syntax::cst::{ParsedFile, parse_file};
+
 #[salsa::db]
 #[derive(Clone, Default)]
 pub struct Database {
@@ -51,6 +54,12 @@ pub fn source_units(db: &dyn Db, file: SourceFile) -> usize {
     byte_len(db, file) + line_count(db, file)
 }
 
+/// Parse one source file into tolerant CST + diagnostics.
+#[salsa::tracked]
+pub fn parse(db: &dyn Db, file: SourceFile) -> PhaseOutput<ParsedFile> {
+    parse_file(FileId(0), file.text(db))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -78,5 +87,19 @@ mod tests {
         assert_eq!(byte_len(&db, file), 0);
         assert_eq!(line_count(&db, file), 0);
         assert_eq!(source_units(&db, file), 0);
+    }
+
+    #[test]
+    fn parse_query_tracks_source_text_changes() {
+        let mut db = Database::default();
+        let file = SourceFile::new(&db, "a.tes".to_owned(), "f a()>i64=1\n".to_owned());
+        let first_tokens = parse(&db, file).value.tokens.len();
+        assert_eq!(parse(&db, file).diagnostics.len(), 0);
+
+        file.set_text(&mut db).to("f a()>i64=\n".to_owned());
+
+        let out = parse(&db, file);
+        assert!(out.diagnostics.has_errors());
+        assert_ne!(out.value.tokens.len(), first_tokens);
     }
 }

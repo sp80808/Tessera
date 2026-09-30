@@ -8,3 +8,5 @@ rust-version.workspace = true
 
 [dependencies]
 salsa.workspace = true
+tessera-phases = { path = "../tessera-phases" }
+tessera-syntax = { path = "../tessera-syntax" }
