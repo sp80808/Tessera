@@ -27,7 +27,12 @@
 
 use std::fmt;
 
-use crate::{TirExpr, TirFunction, TirModule, TirParam, TirType};
+use tessera_phases::{FileId, Provenance, ProvenanceMap, Span};
+
+use crate::{
+    FunctionProvenance, ModuleProvenance, TirExpr, TirFunction, TirModule, TirNodeId, TirParam,
+    TirType,
+};
 
 /// Bound on expression nesting accepted from text. Larger than the frontend's
 /// `MAX_EXPR_DEPTH` (a bounded chain of that length is one node deeper than the
@@ -396,16 +401,31 @@ impl<'a> Sexps<'a> {
         )
     }
 
-    fn expr(&self, root: usize) -> Result<TirExpr> {
-        let order = self.plan(root)?;
-        self.assemble(root, order)
+    /// Source span of arena list `node`, from its `(` through its `)`.
+    fn span(&self, file: FileId, node: usize) -> Span {
+        let c = |n: usize| u32::try_from(n).unwrap_or(u32::MAX);
+        let n = &self.nodes[node];
+        Span::new(file, c(n.start), c(n.end.saturating_add(1)))
     }
 
-    fn func(&self, node: usize) -> Result<TirFunction> {
+    /// The expression at `root` and the span of each node, indexed by
+    /// [`TirNodeId`] (the plan is in pre-order, which is exactly that order).
+    fn expr(&self, file: FileId, root: usize) -> Result<(TirExpr, ProvenanceMap<TirNodeId>)> {
+        let order = self.plan(root)?;
+        let mut nodes = ProvenanceMap::new();
+        for (i, (node, _)) in order.iter().enumerate() {
+            let id = TirNodeId(u32::try_from(i).unwrap_or(u32::MAX));
+            nodes.insert(id, Provenance::Source(self.span(file, *node)));
+        }
+        Ok((self.assemble(root, order)?, nodes))
+    }
+
+    fn func(&self, file: FileId, node: usize) -> Result<(TirFunction, FunctionProvenance)> {
         self.keyword(node, 0, "func")?;
         let name = self.name(node, 1, "function name")?;
         let mut idx = 2;
         let mut params = Vec::new();
+        let mut param_prov = Vec::new();
         while let Some(Elem::List(p)) = self.nodes[node].elems.get(idx) {
             if self.head(*p).map(|(h, _)| h) != Some("param") {
                 break;
@@ -414,6 +434,7 @@ impl<'a> Sexps<'a> {
             let ty = self.ty(*p, 2)?;
             self.end(*p, 3)?;
             params.push(TirParam { name: pname, ty });
+            param_prov.push(Provenance::Source(self.span(file, *p)));
             idx += 1;
         }
         let ret_node = self.list(node, idx)?;
@@ -425,23 +446,35 @@ impl<'a> Sexps<'a> {
         let body_expr = self.list(body_node, 1)?;
         self.end(body_node, 2)?;
         self.end(node, idx + 2)?;
-        Ok(TirFunction {
-            name,
-            params,
-            ret,
-            body: self.expr(body_expr)?,
-        })
+        let (body, nodes) = self.expr(file, body_expr)?;
+        let provenance = FunctionProvenance {
+            func: Provenance::Source(self.span(file, node)),
+            params: param_prov,
+            nodes,
+        };
+        Ok((
+            TirFunction {
+                name,
+                params,
+                ret,
+                body,
+            },
+            provenance,
+        ))
     }
 
-    fn module(&self) -> Result<TirModule> {
+    fn module(&self, file: FileId) -> Result<(TirModule, ModuleProvenance)> {
         let mut funcs = Vec::new();
+        let mut provenance = ModuleProvenance::default();
         for idx in 0..self.nodes[0].elems.len() {
-            funcs.push(self.func(self.list(0, idx)?)?);
+            let (func, prov) = self.func(file, self.list(0, idx)?)?;
+            funcs.push(func);
+            provenance.funcs.push(prov);
         }
         if funcs.is_empty() {
             return error(0, "empty module: expected `(func ...)`");
         }
-        Ok(TirModule { funcs })
+        Ok((TirModule { funcs }, provenance))
     }
 }
 
@@ -489,8 +522,8 @@ fn build(shape: Shape, kids: Vec<TirExpr>) -> Option<TirExpr> {
     })
 }
 
-pub(crate) fn parse_module(text: &str) -> Result<TirModule> {
-    read(text)?.module()
+pub(crate) fn parse_module(file: FileId, text: &str) -> Result<(TirModule, ModuleProvenance)> {
+    read(text)?.module(file)
 }
 
 #[cfg(test)]
