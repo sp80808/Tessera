@@ -20,6 +20,8 @@
 //! post-order of the finished CFG with `then` before `else` (contract §2.4).
 //! Nothing iterates a hash map.
 
+use std::collections::BTreeMap;
+
 use tessera_phases::{Diagnostic, DiagnosticSet, FileId, Phase, PhaseOutput, Provenance, Span};
 use tessera_tir::{
     FunctionProvenance, ModuleProvenance, TirError, TirExpr, TirFunction, TirModule, TirNodeId,
@@ -165,8 +167,8 @@ enum Task<'a> {
     AndBranch { id: u32, goal: Goal<'a> },
     /// The binder of a `let` is on `vals`: bring `name` into scope.
     BindScope(&'a str),
-    /// Leave the scope of the innermost `let`.
-    PopScope,
+    /// Leave the scope of the innermost `let` binding this name.
+    PopScope(&'a str),
     /// Continue emitting into block `block`.
     SwitchTo { block: usize },
     /// End the current block with a jump to `join`.
@@ -203,7 +205,10 @@ struct FnLower<'a> {
     locals: Vec<LocalDecl>,
     blocks: Vec<OpenBlock>,
     cur: usize,
-    env: Vec<(&'a str, LocalId)>,
+    /// Binders in scope: each name's locals, innermost last. A map rather
+    /// than one list scanned per variable, which was quadratic in the number
+    /// of parameters.
+    env: BTreeMap<&'a str, Vec<LocalId>>,
     vals: Vec<Operand>,
     tasks: Vec<Task<'a>>,
     /// Broken internal invariants; reported as `E-mir-internal`. Never expected.
@@ -278,7 +283,7 @@ fn lower_function(
         name: None,
         kind: LocalKind::Return,
     }];
-    let mut env = Vec::new();
+    let mut env: BTreeMap<&str, Vec<LocalId>> = BTreeMap::new();
     let mut params = Vec::new();
     for (i, param) in func.params.iter().enumerate() {
         let id = LocalId(u32::try_from(i + 1).unwrap_or(u32::MAX));
@@ -287,7 +292,7 @@ fn lower_function(
             name: Some(param.name.clone()),
             kind: LocalKind::Param,
         });
-        env.push((param.name.as_str(), id));
+        env.entry(param.name.as_str()).or_default().push(id);
         params.push(id);
     }
 
@@ -398,7 +403,7 @@ impl<'a> FnLower<'a> {
     }
 
     fn lookup(&mut self, name: &str) -> Operand {
-        let found = self.env.iter().rev().find(|(n, _)| *n == name).map(|e| e.1);
+        let found = self.env.get(name).and_then(|locals| locals.last()).copied();
         if let Some(local) = found {
             Operand::Copy(local)
         } else {
@@ -431,11 +436,11 @@ impl<'a> FnLower<'a> {
             Task::IfBranch { id, goal } => self.if_branch(id, goal),
             Task::AndBranch { id, goal } => self.and_branch(id, goal),
             Task::BindScope(name) => match self.pop() {
-                Operand::Copy(local) => self.env.push((name, local)),
+                Operand::Copy(local) => self.env.entry(name).or_default().push(local),
                 _ => self.problem("`let` initializer did not produce a local"),
             },
-            Task::PopScope => {
-                if self.env.pop().is_none() {
+            Task::PopScope(name) => {
+                if self.env.get_mut(name).and_then(Vec::pop).is_none() {
                     self.problem("scope underflow");
                 }
             }
@@ -519,7 +524,7 @@ impl<'a> FnLower<'a> {
             TirExpr::Let { name, .. } => {
                 // Runs in this order: init (into a fresh binder), bring the
                 // binder into scope, body towards the caller's goal, leave scope.
-                self.tasks.push(Task::PopScope);
+                self.tasks.push(Task::PopScope(name));
                 self.tasks.push(Task::Expr { id: kids[1], goal });
                 self.tasks.push(Task::BindScope(name));
                 self.tasks.push(Task::Expr {
