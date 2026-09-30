@@ -134,11 +134,14 @@ impl std::error::Error for SyntaxError {}
 /// Provisional recursion bound for parenthesized expressions.
 pub const MAX_NESTING: usize = 128;
 
-/// Provisional bound on expression *tree* depth (paren nesting plus the length
-/// of a left-leaning `+` chain). The bootstrap AST/TIR and their consumers
-/// (formatter, lowering, `Drop`) are recursive, so unbounded depth would
-/// overflow the stack; exceeding it is a diagnostic. Revisit when #19 moves to
-/// arena-based HIR.
+/// Provisional bound on expression *tree* depth: the number of `+` and
+/// parenthesis levels on the deepest root-to-leaf path (a leaf counts 0), so
+/// `a+b+c` has depth 2 and `(a+b)+c` depth 3. It is measured over the whole
+/// path, not per parenthesis level: chains nested inside the left operand of
+/// other chains add up. The bootstrap AST/TIR and their consumers (formatter,
+/// lowering, `Drop`) are recursive, so unbounded depth would overflow the
+/// stack; exceeding it is a diagnostic. Revisit when #19 moves to arena-based
+/// HIR.
 pub const MAX_EXPR_DEPTH: usize = 1000;
 
 // ---------- lowering (AST -> TIR: every inferred type made explicit) ----------
@@ -744,6 +747,55 @@ mod tests {
         let hostile = format!("f c(a:i64)>i64={}", vec!["a"; 1_000_000].join("+"));
         assert!(matches!(
             parse(&hostile),
+            Err(SyntaxError::NestingTooDeep { .. })
+        ));
+    }
+
+    /// `a+a+…` of `links` links, as the left operand of an enclosing chain.
+    fn left_nested(levels: &[usize]) -> String {
+        let mut e = "a".to_owned();
+        for (i, &links) in levels.iter().enumerate() {
+            if i > 0 {
+                e = format!("({e})");
+            }
+            e.push_str(&"+a".repeat(links));
+        }
+        format!("f c(a:i64)>i64={e}")
+    }
+
+    /// Regression: the depth budget used to reset at every parenthesis level
+    /// (`paren depth + links of this chain`), so chains nested in the left
+    /// operand of other chains built ASTs ~120x deeper than `MAX_EXPR_DEPTH`
+    /// and `tsr fmt`/`tsr tir` aborted with a stack overflow on a 240 KB file
+    /// while `tsr check` called it clean.
+    #[test]
+    fn left_nested_chains_count_against_one_depth_budget() {
+        // 128 levels, each a near-maximal chain: ~120k deep before the fix.
+        let levels: Vec<usize> = (0..MAX_NESTING).map(|d| MAX_EXPR_DEPTH - d - 1).collect();
+        let hostile = left_nested(&levels);
+        assert!(matches!(
+            parse(&hostile),
+            Err(SyntaxError::NestingTooDeep { .. })
+        ));
+        assert!(fmt(&hostile).is_err());
+        assert!(expand(&hostile).is_err());
+        let out = cst::parse_file(tessera_phases::FileId(0), &hostile);
+        assert_eq!(out.diagnostics.len(), 1, "reported once, no cascade");
+
+        // Exactly at the limit through the same shape: 499 + 1 (parens) + 500.
+        let at_limit = left_nested(&[499, 500]);
+        let canonical = fmt(&at_limit).expect("depth == MAX_EXPR_DEPTH is accepted");
+        assert_eq!(fmt(&canonical).as_deref(), Ok(canonical.as_str()));
+        let tir = expand(&at_limit).expect("expands");
+        let module = tessera_tir::TirModule::parse(&tir).expect("TIR reader accepts it");
+        assert_eq!(module.to_text(), tir);
+        // One more link anywhere on the deepest path is over the limit.
+        assert!(matches!(
+            parse(&left_nested(&[499, 501])),
+            Err(SyntaxError::NestingTooDeep { .. })
+        ));
+        assert!(matches!(
+            parse(&left_nested(&[500, 500])),
             Err(SyntaxError::NestingTooDeep { .. })
         ));
     }
