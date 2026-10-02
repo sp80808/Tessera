@@ -5,6 +5,7 @@ use tessera_phases::{DiagnosticSet, Severity};
 use tessera_syntax::{fmt, lexer};
 
 mod pipeline;
+mod witness;
 
 use pipeline::Input;
 
@@ -13,6 +14,10 @@ fn usage() -> ExitCode {
         "usage: tsr <file.tes> | tsr fmt <file.tes> | tsr tir <file.tes>\n       \
          tsr tokens <file.tes>   (scaffold: lossless token dump)\n       \
          tsr check <file.tes>    (syntax, name and type diagnostics, all at once)\n       \
+         tsr witness [--phase=check|mir|backend] [--overflow=wrapping|trapping] <file>\n       \
+         \x20        (one run as tessera.witness/v0 JSON evidence on stdout; exit 0 pass,\n       \
+         \x20         1 fail, 3 unsupported phase, 4 tool error)\n       \
+         tsr --version\n       \
          tsr mir --overflow=wrapping|trapping <file.tes|file.tir>\n       \
          tsr run --overflow=wrapping|trapping <file.tes|file.tir> [FUNCTION] [ARG...]\n       \
          \x20        (reference MIR interpreter; FUNCTION is required when the file has several)\n       \
@@ -198,6 +203,65 @@ fn run_lowering(command: &str, rest: Vec<OsString>) -> ExitCode {
     }
 }
 
+/// `tsr witness [--phase=P] [--overflow=MODE] FILE`.
+fn run_witness(rest: Vec<OsString>) -> ExitCode {
+    let mut phase = "check".to_owned();
+    let mut overflow = None;
+    let mut path = None;
+    let mut rest = rest.into_iter();
+    while let Some(arg) = rest.next() {
+        let text = arg.to_string_lossy().into_owned();
+        let (flag, inline) = match text.split_once('=') {
+            Some((flag, value)) if flag.starts_with("--") => {
+                (flag.to_owned(), Some(value.to_owned()))
+            }
+            _ => (text.clone(), None),
+        };
+        if flag != "--phase" && flag != "--overflow" {
+            if path.replace(arg).is_some() {
+                return usage();
+            }
+            continue;
+        }
+        let Some(value) = inline.or_else(|| rest.next().map(|v| v.to_string_lossy().into_owned()))
+        else {
+            return usage();
+        };
+        if flag == "--phase" {
+            phase = value;
+        } else {
+            let Some(mode) = pipeline::parse_overflow(&value) else {
+                eprintln!("tsr: {}", pipeline::OVERFLOW_REQUIRED);
+                return ExitCode::from(2);
+            };
+            overflow = Some(mode);
+        }
+    }
+    let Some(path) = path else {
+        return usage();
+    };
+    let target = match witness::Target::parse(&phase, overflow) {
+        Ok(target) => target,
+        Err(error) => {
+            eprintln!("tsr: {error}");
+            return ExitCode::from(2);
+        }
+    };
+    let source =
+        fs::read_to_string(&path).map_err(|error| format!("failed to read input: {error}"));
+    let display = path.to_string_lossy();
+    let (outcome, doc) =
+        witness::witness(&display, source.as_deref().map_err(Clone::clone), target);
+    match serde_json::to_string_pretty(&doc) {
+        Ok(json) => println!("{json}"),
+        Err(error) => {
+            eprintln!("tsr: failed to serialize witness: {error}");
+            return ExitCode::from(witness::Outcome::ToolError.exit_code());
+        }
+    }
+    ExitCode::from(outcome.exit_code())
+}
+
 fn main() -> ExitCode {
     let mut args = env::args_os();
     let _program = args.next();
@@ -205,6 +269,13 @@ fn main() -> ExitCode {
     let Some(first) = args.next() else {
         return usage();
     };
+    if first == "--version" || first == "-V" {
+        println!("{}", witness::version_line());
+        return ExitCode::SUCCESS;
+    }
+    if first == "witness" {
+        return run_witness(args.collect());
+    }
     if first == "mir" || first == "run" {
         let command = first.to_string_lossy().into_owned();
         return run_lowering(&command, args.collect());

@@ -44,6 +44,7 @@ The runtime program does not silently depend on research metadata. External cont
 - [Context tile language proposal](docs/spec/context-tiles.md)
 - [Tessera Model Transport proposal](docs/spec/model-transport.md)
 - [Ownership capability graph proposal](docs/spec/ownership-capability-graph.md)
+- [`tsr witness`: machine-readable compiler evidence](docs/spec/witness.md) (`cargo run -q -p tessera-cli -- witness examples/witness/pass.tes`)
 - [Incremental semantic query-engine architecture](docs/architecture/incremental-query-engine.md)
 - [Research pass 2: transport, active context, ownership graphs](docs/research/2026-09-29-pass2.md)
 - [Semantic core / memory safety](docs/research/semantic-core.md)

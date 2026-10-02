@@ -170,3 +170,123 @@ fn tir_expands_tc_through_the_phases() {
         "{err}"
     );
 }
+
+/// `tsr witness` on `fixture`: exit code and the parsed evidence document.
+fn witness(args: &[&str]) -> (i32, serde_json::Value) {
+    let mut full = vec!["witness"];
+    full.extend_from_slice(args);
+    let (code, out, err) = tsr(&full);
+    assert_eq!(err, "", "witness writes evidence to stdout only");
+    let doc = serde_json::from_str(&out).unwrap_or_else(|e| panic!("{e}: {out}"));
+    (code, doc)
+}
+
+/// The issue #41 witness fixtures through the real binary: outcome, exit
+/// code and structured diagnostics, never terminal prose.
+#[test]
+fn witness_fixtures_report_compiler_evidence() {
+    let cases = [
+        ("examples/witness/pass.tes", 0, "pass", vec![]),
+        (
+            "examples/witness/syntax_error.tes",
+            1,
+            "fail",
+            vec!["E-syntax-expected"],
+        ),
+        (
+            "examples/witness/semantic_error.tes",
+            1,
+            "fail",
+            vec!["E-resolve-unbound-name"],
+        ),
+    ];
+    for (path, want_code, want_outcome, want_codes) in cases {
+        let (code, doc) = witness(&[path]);
+        assert_eq!(
+            (code, doc["outcome"].as_str()),
+            (want_code, Some(want_outcome)),
+            "{path}"
+        );
+        assert_eq!(doc["schema"], "tessera.witness/v0");
+        assert_eq!(doc["tool"]["version"], env!("CARGO_PKG_VERSION"));
+        let commit = doc["tool"]["commit"].as_str().expect("commit");
+        assert!(commit == "unknown" || commit.len() == 40, "{commit}");
+        let codes: Vec<&str> = doc["diagnostics"]
+            .as_array()
+            .expect("array")
+            .iter()
+            .map(|d| d["code"].as_str().expect("code"))
+            .collect();
+        assert_eq!(codes, want_codes, "{path}");
+    }
+    let (code, doc) = witness(&[
+        "--phase=mir",
+        "--overflow=trapping",
+        "examples/witness/pass.tes",
+    ]);
+    assert_eq!((code, doc["outcome"].as_str()), (0, Some("pass")));
+    assert_eq!(doc["artifacts"]["mir"]["functions"], 1);
+}
+
+#[test]
+fn witness_marks_unimplemented_phases_unsupported() {
+    let (code, doc) = witness(&["--phase", "backend", "examples/witness/pass.tes"]);
+    assert_eq!((code, doc["outcome"].as_str()), (3, Some("unsupported")));
+    assert_eq!(doc["artifacts"], serde_json::json!({}));
+}
+
+#[test]
+fn witness_reports_unreadable_input_as_a_tool_error() {
+    let (code, doc) = witness(&["examples/witness/does-not-exist.tes"]);
+    assert_eq!((code, doc["outcome"].as_str()), (4, Some("tool_error")));
+    assert!(
+        doc["error"]
+            .as_str()
+            .is_some_and(|e| e.contains("failed to read"))
+    );
+}
+
+#[test]
+fn witness_usage_errors_are_not_evidence() {
+    let (code, out, err) = tsr(&["witness", "--phase=mir", "examples/witness/pass.tes"]);
+    assert_eq!((code, out.as_str()), (2, ""));
+    assert!(err.contains("open question O1"), "{err}");
+    assert_eq!(
+        tsr(&["witness", "--phase=link", "examples/witness/pass.tes"]).0,
+        2
+    );
+    assert_eq!(tsr(&["witness"]).0, 2);
+}
+
+/// Repeated runs of one fixture are byte-identical apart from `timing`, so
+/// Lattice can compare and replay them by `result_id`.
+#[test]
+fn witness_is_deterministic_across_runs() {
+    for path in [
+        "examples/witness/pass.tes",
+        "examples/witness/syntax_error.tes",
+    ] {
+        let strip = |mut doc: serde_json::Value| {
+            doc.as_object_mut().expect("object").remove("timing");
+            doc
+        };
+        let (_, first) = witness(&[path]);
+        let (_, second) = witness(&[path]);
+        assert!(
+            first["result_id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("sha256:"))
+        );
+        assert_eq!(strip(first), strip(second), "{path}");
+    }
+}
+
+#[test]
+fn version_names_the_commit() {
+    let (code, out, _) = tsr(&["--version"]);
+    assert_eq!(code, 0);
+    assert!(
+        out.starts_with(&format!("tsr {} (commit ", env!("CARGO_PKG_VERSION"))),
+        "{out}"
+    );
+}
