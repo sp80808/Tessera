@@ -41,6 +41,11 @@ counters! {
     FeRoundTripChecked,
     FeSpansChecked,
     FeRespaceChecked,
+    // frontend_structured (generator oracle)
+    StructuredRuns,
+    StructuredPristine,
+    StructuredOracleChecked,
+    StructuredTooDeep,
 }
 
 #[cfg(feature = "stats")]
