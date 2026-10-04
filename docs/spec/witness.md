@@ -86,9 +86,24 @@ Exit 2 is a usage error: no document is printed, the message goes to stderr.
 - `result_id` hashes the document without `timing`, `invocation.path` and
   itself. Identical source bytes, phase, overflow mode and `tsr` build give
   an identical `result_id` and an identical document apart from `timing`.
+- To check a stored document, recompute `result_id`: drop `timing`,
+  `invocation.path` and `result_id`, serialize the rest as compact JSON with
+  object keys sorted at every level (no whitespace), and SHA-256 the UTF-8
+  bytes. This serialization is part of the contract
+  (`result_id_hashes_sorted_compact_json` pins it).
 - `timing.compile_us` covers the compiler phases only; `total_us` adds
   tokenizer counting (the tokenizer tables load once per process). Timing is
   never part of `result_id`.
+
+## Consumers
+
+Lattice's `verify.tessera` runs `tsr witness`, stores the document verbatim in
+its run log and replays verdicts from it without `tsr`
+([sp80808/Lattice `packages/tessera`](https://github.com/sp80808/Lattice/tree/main/packages/tessera)).
+It trusts a document only when `outcome` matches the exit code and the
+document hashes to its own `result_id`; anything else it records as a tool
+error. Its `examples/tessera-repair` drives a repair loop where this command is
+the only judge of success.
 
 ## Fixtures
 
