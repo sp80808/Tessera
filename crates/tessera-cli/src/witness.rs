@@ -364,7 +364,9 @@ pub fn version_line() -> String {
 }
 
 /// `result_id`: SHA-256 of the document minus its run-specific fields
-/// (`timing`, `invocation.path`, `result_id` itself).
+/// (`timing`, `invocation.path`, `result_id` itself), serialized as compact
+/// JSON with object keys sorted. Consumers (Lattice) recompute it to check a
+/// stored document, so that serialization is part of the contract.
 fn result_id(doc: &Json) -> String {
     let mut stable = doc.clone();
     if let Some(obj) = stable.as_object_mut() {
@@ -566,6 +568,46 @@ mod tests {
         assert_ne!(a["result_id"], c["result_id"]);
         let (_, d) = run("a.tes", PASS, Target::Mir(OverflowMode::Wrapping));
         assert_ne!(a["result_id"], d["result_id"]);
+    }
+
+    /// Independent canonical form: compact, keys sorted at every level.
+    fn canonical(value: &Json) -> String {
+        match value {
+            Json::Object(map) => {
+                let mut keys: Vec<&String> = map.keys().collect();
+                keys.sort();
+                let fields: Vec<String> = keys
+                    .into_iter()
+                    .map(|k| format!("{}:{}", Json::String(k.clone()), canonical(&map[k])))
+                    .collect();
+                format!("{{{}}}", fields.join(","))
+            }
+            Json::Array(items) => {
+                let items: Vec<String> = items.iter().map(canonical).collect();
+                format!("[{}]", items.join(","))
+            }
+            other => other.to_string(),
+        }
+    }
+
+    #[test]
+    fn result_id_hashes_sorted_compact_json() {
+        // Guards the consumer contract: if serde_json ever preserved insertion
+        // order (e.g. a dependency enabling `preserve_order`), every stored
+        // result_id would stop verifying downstream.
+        for (path, text) in [("a.tes", PASS), ("b.tes", "f add(a:i64,b:i64)>i64=a+\n")] {
+            let (_, doc) = run(path, text, Target::Check);
+            let mut stable = doc.clone();
+            let obj = stable.as_object_mut().unwrap();
+            obj.remove("timing");
+            obj.remove("result_id");
+            obj.get_mut("invocation")
+                .and_then(Json::as_object_mut)
+                .unwrap()
+                .remove("path");
+            let expected = format!("sha256:{}", sha256_hex(canonical(&stable).as_bytes()));
+            assert_eq!(doc["result_id"], Json::String(expected));
+        }
     }
 
     #[test]
