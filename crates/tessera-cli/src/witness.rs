@@ -24,6 +24,7 @@ use tessera_phases::{Diagnostic, DiagnosticSet, Phase, Severity};
 use tessera_syntax::lexer;
 use tessera_tir::{ModuleProvenance, TirModule};
 
+use crate::advice;
 use crate::line_col;
 use crate::pipeline::{self, Input};
 
@@ -139,6 +140,14 @@ fn representation(text: &str, tessera_tokens: Option<usize>) -> Json {
     })
 }
 
+fn fix_json(f: &advice::Fix) -> Json {
+    json!({
+        "span": { "start": f.start, "end": f.end },
+        "replacement": f.replacement,
+        "label": f.label,
+    })
+}
+
 /// Accumulates the evidence of one run.
 struct Run<'a> {
     text: &'a str,
@@ -149,6 +158,7 @@ struct Run<'a> {
     /// tokenized after the compiler run so `timing.compile_us` excludes it.
     representations: Vec<(&'static str, String, Option<usize>)>,
     error: Option<String>,
+    suggestions: Vec<advice::Suggestion>,
 }
 
 impl<'a> Run<'a> {
@@ -160,6 +170,7 @@ impl<'a> Run<'a> {
             artifacts: Map::new(),
             representations: Vec::new(),
             error: None,
+            suggestions: Vec::new(),
         }
     }
 
@@ -174,7 +185,38 @@ impl<'a> Run<'a> {
             "span": { "start": span.start, "end": span.end },
             "line": line,
             "col": col,
+            "help": null,
+            "fixes": [],
         }));
+    }
+
+    /// `help`/`fixes` on each diagnostic of rejected TC, an
+    /// `E-syntax-foreign` diagnostic first when the source reads as another
+    /// language, and the whole-file `suggestions` that pass `check`.
+    fn advise_tc(&mut self, diagnostics: &DiagnosticSet) {
+        let report = advice::report(self.text, diagnostics);
+        for (a, json) in report.advice.iter().zip(self.diagnostics.iter_mut()) {
+            json["help"] = a.help.clone().map_or(Json::Null, Json::String);
+            json["fixes"] = Json::Array(a.fixes.iter().map(fix_json).collect());
+        }
+        if let Some((start, end, message)) = &report.foreign {
+            let (line, col) = line_col(self.text, *start);
+            self.diagnostics.insert(
+                0,
+                json!({
+                    "phase": Phase::Syntax.name(),
+                    "severity": "error",
+                    "code": advice::FOREIGN_CODE,
+                    "message": message,
+                    "span": { "start": start, "end": end },
+                    "line": line,
+                    "col": col,
+                    "help": format!("a TC program is one function: `{}`", advice::TEMPLATE),
+                    "fixes": [],
+                }),
+            );
+        }
+        self.suggestions = advice::suggestions(self.text, &report.advice);
     }
 
     /// Record `phases` as run against `diagnostics`; true when none of them
@@ -213,6 +255,9 @@ impl<'a> Run<'a> {
             Phase::Tir,
         ];
         let ok = self.phases_ran(&phases, &out.diagnostics);
+        if !ok {
+            self.advise_tc(&out.diagnostics);
+        }
         ok.then_some((out.value.module, out.value.provenance))
     }
 
@@ -234,6 +279,8 @@ impl<'a> Run<'a> {
                     "span": { "start": at, "end": at },
                     "line": line,
                     "col": col,
+                    "help": null,
+                    "fixes": [],
                 }));
                 self.phases.push((Phase::Tir.name(), "fail"));
                 return None;
@@ -250,6 +297,8 @@ impl<'a> Run<'a> {
                 "span": null,
                 "line": null,
                 "col": null,
+                "help": null,
+                "fixes": [],
             }));
         }
         self.phases.push((
@@ -406,6 +455,7 @@ pub fn witness(path: &str, source: Result<&str, String>, target: Target) -> (Out
                 "artifacts": {},
                 "representations": {},
                 "error": error,
+                "suggestions": [],
             }),
         ),
         Ok(text) => {
@@ -434,6 +484,12 @@ pub fn witness(path: &str, source: Result<&str, String>, target: Target) -> (Out
                     "artifacts": run.artifacts,
                     "representations": representations,
                     "error": run.error,
+                    "suggestions": run.suggestions.iter().map(|s| json!({
+                        "source": s.source,
+                        "sha256": sha256_hex(s.source.as_bytes()),
+                        "label": s.label,
+                        "checked": "check",
+                    })).collect::<Vec<_>>(),
                 }),
             )
         }

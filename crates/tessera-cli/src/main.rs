@@ -4,6 +4,8 @@ use tessera_db::{Database, SourceFile, byte_len, line_count, source_units};
 use tessera_phases::{DiagnosticSet, Severity};
 use tessera_syntax::{fmt, lexer};
 
+mod advice;
+mod grammar;
 mod pipeline;
 mod witness;
 
@@ -17,6 +19,8 @@ fn usage() -> ExitCode {
          tsr witness [--phase=check|mir|backend] [--overflow=wrapping|trapping] <file>\n       \
          \x20        (one run as tessera.witness/v0 JSON evidence on stdout; exit 0 pass,\n       \
          \x20         1 fail, 3 unsupported phase, 4 tool error)\n       \
+         tsr grammar [--format=ebnf|gbnf|lark]   (the TC grammar, for prompts and\n       \
+         \x20        constrained decoding)\n       \
          tsr --version\n       \
          tsr mir --overflow=wrapping|trapping <file.tes|file.tir>\n       \
          tsr run --overflow=wrapping|trapping <file.tes|file.tir> [FUNCTION] [ARG...]\n       \
@@ -84,12 +88,42 @@ fn run_tokens(text: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+/// `render`, with the foreign-syntax summary first and each diagnostic's
+/// `help` line from [`advice`].
+fn render_with_help(path: &str, text: &str, diagnostics: &DiagnosticSet) -> String {
+    let report = advice::report(text, diagnostics);
+    let mut out = String::new();
+    if let Some((start, _, message)) = &report.foreign {
+        let (line, col) = line_col(text, *start);
+        out.push_str(&format!(
+            "{path}:{line}:{col}: error[{}]: {message}\n  help: a TC program is one function: `{}`\n",
+            advice::FOREIGN_CODE,
+            advice::TEMPLATE
+        ));
+    }
+    let rendered = render(path, text, diagnostics);
+    for (line, advice) in rendered.lines().zip(&report.advice) {
+        out.push_str(line);
+        out.push('\n');
+        if let Some(help) = &advice.help {
+            out.push_str(&format!("  help: {help}\n"));
+        }
+    }
+    out
+}
+
 fn run_check(text: &str, path: &std::ffi::OsStr) -> ExitCode {
     let out = pipeline::check_tc(text);
     eprint!(
         "{}",
-        render(&path.to_string_lossy(), text, &out.diagnostics)
+        render_with_help(&path.to_string_lossy(), text, &out.diagnostics)
     );
+    if out.diagnostics.has_errors() {
+        let report = advice::report(text, &out.diagnostics);
+        for s in advice::suggestions(text, &report.advice) {
+            eprint!("  suggestion ({}; passes check): {}", s.label, s.source);
+        }
+    }
     if out.diagnostics.has_errors() {
         ExitCode::from(1)
     } else {
@@ -271,6 +305,24 @@ fn main() -> ExitCode {
     };
     if first == "--version" || first == "-V" {
         println!("{}", witness::version_line());
+        return ExitCode::SUCCESS;
+    }
+    if first == "grammar" {
+        let format = match args.next() {
+            None => "ebnf".to_owned(),
+            Some(arg) => match arg.to_string_lossy().strip_prefix("--format=") {
+                Some(format) => format.to_owned(),
+                None => return usage(),
+            },
+        };
+        if args.next().is_some() {
+            return usage();
+        }
+        let Some(text) = grammar::grammar(&format) else {
+            eprintln!("tsr: unknown grammar format `{format}` (expected ebnf, gbnf or lark)");
+            return ExitCode::from(2);
+        };
+        print!("{text}");
         return ExitCode::SUCCESS;
     }
     if first == "witness" {

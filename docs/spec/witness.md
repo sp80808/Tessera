@@ -49,8 +49,11 @@ Exit 2 is a usage error: no document is printed, the message goes to stderr.
   "diagnostics": [   // from syntax_error.tes; empty for pass.tes
     { "phase": "syntax", "severity": "error", "code": "E-syntax-expected",
       "message": "expected expression, found end of input",
-      "span": { "start": 26, "end": 26 }, "line": 2, "col": 1 }
+      "span": { "start": 26, "end": 26 }, "line": 2, "col": 1,
+      "help": "an operand is missing: EXPR is integers, parameters and `+`, e.g. `a+b`",
+      "fixes": [] }
   ],
+  "suggestions": [],   // from semantic_error.tes: [{ "source": "f add(a:i64)>i64=a+a\n", ... }]
   "artifacts": {
     "tir": { "sha256": "<hex>", "bytes": 92, "functions": 1, "roundtrip": true },
     "mir": { "sha256": "<hex>", "bytes": 230, "functions": 1 }   // --phase=mir only
@@ -77,6 +80,19 @@ Exit 2 is a usage error: no document is printed, the message goes to stderr.
   recovered; `outcome` is the verdict.
 - `diagnostics[].span` is a byte range into the source; `line`/`col` are
   1-based, `col` in bytes. TIR verifier findings carry no span (`null`).
+- `diagnostics[].help` (string or `null`) says what TC accepts instead;
+  `diagnostics[].fixes` lists alternative edits
+  (`{ "span": {start,end}, "replacement", "label" }`), apply at most one.
+  When rejected TC reads as another language (`fn`/`def`/`int` headers, `->`,
+  braces, `return`, `;`), an `E-syntax-foreign` diagnostic comes first,
+  naming each construct, and the parser's cascading syntax errors after the
+  first carry no advice.
+- `suggestions` are complete replacement files, each already accepted by the
+  front end (`"checked": "check"`): the TC reading of a foreign-syntax
+  program, then combinations of the `fixes`. They are not behaviour-checked;
+  several may be offered (e.g. one per parameter an unbound name is closest
+  to), and the caller's tests decide. Empty for `pass`, `.tir` input and tool
+  errors.
 - `artifacts.tir` exists only when the front end passed. `roundtrip` says the
   canonical TIR text parses back to the identical module.
 - `representations` are measurements, not claims: byte counts, Tessera lexer
@@ -94,6 +110,13 @@ Exit 2 is a usage error: no document is printed, the message goes to stderr.
 - `timing.compile_us` covers the compiler phases only; `total_us` adds
   tokenizer counting (the tokenizer tables load once per process). Timing is
   never part of `result_id`.
+
+## Grammar
+
+`tsr grammar [--format=ebnf|gbnf|lark]` prints the TC grammar the parser
+accepts: EBNF (default, whitespace-tolerant) for prompts, and GBNF / Lark
+restricted to the canonical spelling for grammar-constrained decoders. See
+[research pass 3](../research/2026-10-04-llm-repair.md).
 
 ## Consumers
 
@@ -115,6 +138,7 @@ the only judge of success.
 | `pass.tes`                    | `pass`                         |
 | `syntax_error.tes`            | `fail` (`E-syntax-expected`)   |
 | `semantic_error.tes`          | `fail` (`E-resolve-unbound-name`) |
+| `foreign_syntax.tes`          | `fail` (`E-syntax-foreign` first, one suggestion) |
 | `pass.tes --phase=backend`    | `unsupported`                  |
 
 TC currently has only the `i64` type, so no TC source reaches a type-check

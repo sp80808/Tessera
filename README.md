@@ -47,6 +47,7 @@ The runtime program does not silently depend on research metadata. External cont
 - [`tsr witness`: machine-readable compiler evidence](docs/spec/witness.md) (`cargo run -q -p tessera-cli -- witness examples/witness/pass.tes`)
 - [Incremental semantic query-engine architecture](docs/architecture/incremental-query-engine.md)
 - [Research pass 2: transport, active context, ownership graphs](docs/research/2026-09-29-pass2.md)
+- [Research pass 3: what makes a model repair an unfamiliar language](docs/research/2026-10-04-llm-repair.md)
 - [Semantic core / memory safety](docs/research/semantic-core.md)
 - [Compiler architecture](docs/research/compiler-architecture.md)
 - [Benchmark methodology](docs/research/benchmarks.md)

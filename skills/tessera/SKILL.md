@@ -145,6 +145,13 @@ tsr ctx update
 
 Agents must check command availability/version rather than assume all planned commands exist.
 
+Implemented today for repair loops: `tsr check` (diagnostics with `help:`
+lines and checked suggestions), `tsr witness` (the same as JSON evidence:
+`diagnostics[].help`, `diagnostics[].fixes`, `suggestions`) and
+`tsr grammar [--format=ebnf|gbnf|lark]` (the exact TC grammar; put it in the
+prompt, or hand GBNF/Lark to a constrained decoder). A suggestion only passes
+`check`; run the behavioural tests before accepting it.
+
 
 ## Automatic graph/context maintenance
 

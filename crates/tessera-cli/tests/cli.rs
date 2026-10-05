@@ -121,6 +121,7 @@ fn errors_point_into_the_file_they_come_from() {
 
 /// `tsr check` runs syntax, HIR, resolution and type checking and reports
 /// every independent problem at once, in source order, without cascades.
+/// Indented lines are `help:`/`suggestion` follow-ups to the line above.
 #[test]
 fn check_reports_every_independent_problem_once() {
     let (code, out, err) = tsr(&["check", BOOTSTRAP]);
@@ -132,6 +133,7 @@ fn check_reports_every_independent_problem_once() {
     assert_eq!(code, 1);
     let codes: Vec<&str> = err
         .lines()
+        .filter(|l| !l.starts_with("  "))
         .map(|l| {
             l.split("error[")
                 .nth(1)
@@ -289,4 +291,76 @@ fn version_names_the_commit() {
         out.starts_with(&format!("tsr {} (commit ", env!("CARGO_PKG_VERSION"))),
         "{out}"
     );
+}
+
+/// A program in another language's syntax gets one diagnostic naming that,
+/// and a whole-file suggestion that itself passes `tsr witness`.
+#[test]
+fn witness_suggests_checked_repairs() {
+    let (code, doc) = witness(&["examples/witness/foreign_syntax.tes"]);
+    assert_eq!((code, doc["outcome"].as_str()), (1, Some("fail")));
+    let first = &doc["diagnostics"][0];
+    assert_eq!(first["code"], "E-syntax-foreign");
+    assert!(
+        first["message"]
+            .as_str()
+            .is_some_and(|m| m.contains("not `fn`") && m.contains("no `return`")),
+        "{first}"
+    );
+    let suggestions = doc["suggestions"].as_array().expect("array");
+    assert_eq!(suggestions.len(), 1, "{suggestions:?}");
+    let source = suggestions[0]["source"].as_str().expect("source");
+    assert_eq!(source, "f add(a:i64,b:i64)>i64=a+b\n");
+    assert_eq!(suggestions[0]["checked"], "check");
+    let (code, doc) = witness(&[&fixture("suggested.tes", source)]);
+    assert_eq!((code, doc["outcome"].as_str()), (0, Some("pass")), "{doc}");
+    assert_eq!(doc["suggestions"], serde_json::json!([]));
+
+    // Fix alternatives are listed per diagnostic; each combination is a suggestion.
+    let (_, doc) = witness(&["examples/witness/semantic_error.tes"]);
+    let unbound = &doc["diagnostics"][0];
+    assert_eq!(unbound["fixes"][0]["replacement"], "a");
+    assert!(
+        unbound["help"]
+            .as_str()
+            .is_some_and(|h| h.contains("did you mean `a`"))
+    );
+    assert_eq!(
+        doc["suggestions"][0]["source"], "f add(a:i64)>i64=a+a\n",
+        "checked, not necessarily what the author meant"
+    );
+}
+
+#[test]
+fn check_prints_help_and_suggestions() {
+    let (code, out, err) = tsr(&["check", "examples/witness/foreign_syntax.tes"]);
+    assert_eq!((code, out.as_str()), (1, ""));
+    assert!(
+        err.starts_with("examples/witness/foreign_syntax.tes:1:1: error[E-syntax-foreign]"),
+        "{err}"
+    );
+    assert!(
+        err.contains("  help: a TC program is one function"),
+        "{err}"
+    );
+    assert!(
+        err.ends_with("passes check): f add(a:i64,b:i64)>i64=a+b\n"),
+        "{err}"
+    );
+}
+
+#[test]
+fn grammar_prints_each_format() {
+    for (args, marker) in [
+        (&["grammar"][..], "function = \"f\""),
+        (&["grammar", "--format=ebnf"], "expr     = term"),
+        (&["grammar", "--format=gbnf"], "root   ::= \"f \""),
+        (&["grammar", "--format=lark"], "start: \"f \""),
+    ] {
+        let (code, out, err) = tsr(args);
+        assert_eq!((code, err.as_str()), (0, ""), "{args:?}");
+        assert!(out.contains(marker), "{args:?}: {out}");
+    }
+    assert_eq!(tsr(&["grammar", "--format=peg"]).0, 2);
+    assert_eq!(tsr(&["grammar", "ebnf"]).0, 2);
 }
