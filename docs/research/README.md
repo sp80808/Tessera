@@ -45,6 +45,7 @@ The executable meaning of ordinary Tessera code must never require an LLM or liv
 - [Model transport proposal](../spec/model-transport.md)
 - [Ownership capability graph proposal](../spec/ownership-capability-graph.md)
 - [Research pass 2 synthesis](2026-09-29-pass2.md)
+- [Research pass 3: LLM repair of an unfamiliar language](2026-10-04-llm-repair.md)
 
 ### Context-native agent architecture
 - [Context Graph and autonomous harness](context-graph-harness.md)
