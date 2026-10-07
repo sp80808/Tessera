@@ -67,7 +67,11 @@ fn manifest_is_wellformed_and_lists_the_required_families() {
         match (file.sha256.as_deref(), file.revision.as_deref()) {
             (Some(sha), Some(rev)) => {
                 assert_eq!(sha.len(), 64, "{} sha256 length", t.id);
-                assert!(rev.chars().all(|c| c.is_ascii_hexdigit()), "{} revision", t.id);
+                assert!(
+                    rev.chars().all(|c| c.is_ascii_hexdigit()),
+                    "{} revision",
+                    t.id
+                );
                 assert!(
                     file.hub_metadata_verified,
                     "{}: pinned entries must verify hub metadata",
