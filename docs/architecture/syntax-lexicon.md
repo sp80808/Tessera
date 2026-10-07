@@ -10,9 +10,20 @@ Status: **provisional**. This register lists what the *lexer* recognizes and wha
 - Keywords are parser decisions. The lexer emits `Ident`; `f` is a keyword only inside the current parser.
 - Every `TokenKind` must have a row here (enforced by `crates/tessera-syntax/tests/lexicon_register.rs`).
 
+## Promotion rule
+
+A row whose `Grammar` column is anything other than `no`, `ignored` or `n/a` (the grammar accepts the lexeme) must have an `Evidence` cell that is either:
+
+1. **a benchmark reference** `bench:<corpus_hash prefix>/<program id>`: the prefix is at least 12 lowercase hex characters and must be a prefix of `corpus_hash` in `bench/results/baseline.json`, and the program id must exist in `bench/corpus/corpus.json`. Several references may be listed, separated by commas; or
+2. **a named, dated exemption**: the literal text `bootstrap only`, plus an entry for that kind in the `EXEMPT` constant of `crates/tessera-tokenbench/tests/evidence_gates.rs` (kind, `since` date, reason). Today all nine accepted rows are exempt with the reason "predates the gate; revisit when #1 has >= 4 families".
+
+Exemptions expire. The test fails if an exempt row gains a real reference, is demoted to `no`, or is deleted, until its `EXEMPT` entry is removed, so the allow-list cannot rot. A `bench:` reference that does not resolve is an error in any row, accepted or not.
+
+What a reference proves, and what it does not: it proves the claim names the *current* committed benchmark artifact. It does not prove that the artifact supports the claim, that the program exercises the lexeme, or that the artifact covers enough tokenizer families (issue #1 asks for >= 4 vendor families; `bench/README.md` tracks that separately). Regenerating the baseline after a corpus change changes `corpus_hash` and therefore invalidates every reference, on purpose: re-read the new artifact and update the citations in the same change. Promotion also needs model-quality evidence (#2) and, for structural forms, an RFC (see `docs/rfcs/README.md`, Evidence gate).
+
 ## Register
 
-`Grammar` = accepted by the current tiny grammar (`examples/bootstrap.tes`). `Evidence` refers to #1/#2 benchmarks; none of the rows below has been promoted.
+`Grammar` = accepted by the current tiny grammar (`examples/bootstrap.tes`). `Evidence` is a benchmark reference or an explicit exemption (see Promotion rule). No row carries a benchmark reference yet: the accepted rows are all `bootstrap only` exemptions, i.e. none of the rows below has been promoted on evidence.
 
 | Kind | Spelling | Lexer | Grammar | Evidence |
 |---|---|---|---|---|
@@ -44,4 +55,4 @@ Notes and known limits:
 
 - `Ident` is ASCII-only; non-ASCII identifiers become `Error` tokens. Whether TC allows Unicode identifiers is undecided.
 - No string, char, float, or negative-literal lexemes exist. `-` is only the `Minus` token; unary/negative literal handling is a grammar decision.
-- Candidate lexemes for competing grammars (#1/#2) should be added as new rows with Grammar = **no** first, and promoted only with evidence.
+- Candidate lexemes for competing grammars (#1/#2) should be added as new rows with Grammar = **no** first, and promoted only with evidence (a `bench:` reference; a new `EXEMPT` entry is not an acceptable way to promote a new lexeme).
