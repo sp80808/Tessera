@@ -34,6 +34,7 @@
 //!   the undecided overflow semantics (O1).
 
 mod dump;
+mod index;
 mod input;
 mod resolve;
 mod tir;
@@ -43,6 +44,7 @@ use tessera_hir::HirOutput;
 use tessera_phases::PhaseOutput;
 
 pub use dump::dump;
+pub use index::{FileSummary, FnSummary, ModuleIndex, Signature, Symbol};
 pub use resolve::{Res, ResolvedFn, ResolvedModule, V0_PRIMS, resolve, resolve_with};
 pub use tir::{TirOutput, to_tir};
 pub use typeck::{TypedFn, TypedModule, typeck};
