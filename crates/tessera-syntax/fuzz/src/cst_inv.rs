@@ -384,7 +384,10 @@ fn check_diagnostics(out: &tessera_phases::PhaseOutput<ParsedFile>, src: &str, s
             show(src)
         );
         let Provenance::Source(span) = d.at else {
-            crate::violation("DIAG-provenance", &format!("{d:?} is synthesized for {}", show(src)));
+            crate::violation(
+                "DIAG-provenance",
+                &format!("{d:?} is synthesized for {}", show(src)),
+            );
         };
         let (start, end) = (span.start as usize, span.end as usize);
         invariant!(

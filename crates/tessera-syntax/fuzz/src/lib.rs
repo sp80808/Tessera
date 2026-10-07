@@ -11,7 +11,7 @@
 
 /// Assert an invariant; the failure message carries a stable ID.
 macro_rules! invariant {
-    ($id:literal, $cond:expr, $($detail:tt)+) => {
+    ($id:expr, $cond:expr, $($detail:tt)+) => {
         if !$cond {
             $crate::fail($id, &format!($($detail)+));
         }
@@ -20,9 +20,10 @@ macro_rules! invariant {
 
 pub mod cst_inv;
 pub mod frontend_inv;
-pub mod gen;
 pub mod lexer_inv;
 pub mod stats;
+// Not `gen`: that is a reserved keyword in edition 2024.
+pub mod structured;
 
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};

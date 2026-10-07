@@ -80,7 +80,9 @@ fn check_kind_shape(src: &str, token: &Token, text: &str) {
         ),
         TokenKind::Ident => invariant!(
             id,
-            text.bytes().next().is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
+            text.bytes()
+                .next()
+                .is_some_and(|b| b.is_ascii_alphabetic() || b == b'_')
                 && text.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_'),
             "ident token {token:?} malformed in {}",
             show(src)

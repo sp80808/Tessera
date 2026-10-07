@@ -33,7 +33,9 @@ fn erase_at(err: SyntaxError) -> SyntaxError {
         SyntaxError::Unexpected { want, got, .. } => SyntaxError::Unexpected { at: 0, want, got },
         SyntaxError::UnknownType { name, .. } => SyntaxError::UnknownType { at: 0, name },
         SyntaxError::UnboundVar { name, .. } => SyntaxError::UnboundVar { at: 0, name },
-        SyntaxError::TypeMismatch { want, got, .. } => SyntaxError::TypeMismatch { at: 0, want, got },
+        SyntaxError::TypeMismatch { want, got, .. } => {
+            SyntaxError::TypeMismatch { at: 0, want, got }
+        }
         SyntaxError::IntOutOfRange { .. } => SyntaxError::IntOutOfRange { at: 0 },
         SyntaxError::TrailingInput { .. } => SyntaxError::TrailingInput { at: 0 },
         SyntaxError::NestingTooDeep { .. } => SyntaxError::NestingTooDeep { at: 0 },
@@ -345,14 +347,18 @@ pub fn check_text(src: &str) {
             hit(Counter::FeExpandErrUnbound);
             invariant!(
                 "PROV-2-unbound-offset",
-                src.get(*at..).is_some_and(|rest| rest.starts_with(name.as_str())),
+                src.get(*at..)
+                    .is_some_and(|rest| rest.starts_with(name.as_str())),
                 "UnboundVar at {at} does not point at {name:?} in {}",
                 show(src)
             );
         }
         Err(other) => crate::fail(
             "FE-expand-error-kind",
-            &format!("expand failed with {other:?} on a parsed program: {}", show(src)),
+            &format!(
+                "expand failed with {other:?} on a parsed program: {}",
+                show(src)
+            ),
         ),
         Ok(tir_text) => check_round_trip(src, &func, &canonical, tir_text),
     }
@@ -369,7 +375,10 @@ fn check_round_trip(src: &str, func: &AstFunction, canonical: &str, tir_text: &s
         Err(err) => {
             crate::fail(
                 "TIR-parse-accepts-expand-output",
-                &format!("TirModule::parse rejects expand output {tir_text:?}: {err} for {}", show(src)),
+                &format!(
+                    "TirModule::parse rejects expand output {tir_text:?}: {err} for {}",
+                    show(src)
+                ),
             );
             return;
         }

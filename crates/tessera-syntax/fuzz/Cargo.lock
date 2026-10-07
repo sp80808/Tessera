@@ -125,24 +125,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "tessera-phases"
+version = "0.0.1"
+
+[[package]]
 name = "tessera-syntax"
 version = "0.0.1"
 dependencies = [
+ "tessera-phases",
  "tessera-tir",
 ]
 
 [[package]]
 name = "tessera-syntax-fuzz"
-version = "0.0.1"
+version = "0.0.0"
 dependencies = [
  "arbitrary",
  "libfuzzer-sys",
+ "tessera-phases",
  "tessera-syntax",
+ "tessera-tir",
 ]
 
 [[package]]
 name = "tessera-tir"
 version = "0.0.1"
+dependencies = [
+ "tessera-phases",
+]
 
 [[package]]
 name = "unicode-ident"
