@@ -53,27 +53,42 @@ fn manifest_is_wellformed_and_lists_the_required_families() {
         .filter(|t| t.loader == Loader::TiktokenEmbedded)
         .count();
     assert_eq!(embedded, 4, "r50k, p50k, cl100k, o200k");
+    let mut pinned = 0usize;
+    let mut unpinned = 0usize;
     for t in manifest
         .tokenizers
         .iter()
         .filter(|t| t.loader == Loader::HfTokenizersJson)
     {
         let file = t.file.as_ref().expect("file ref");
-        // Nothing has been downloaded: hashes and revisions are deliberately unpinned.
-        assert!(
-            file.sha256.is_none() && file.revision.is_none(),
-            "{} must stay unpinned until a download is approved",
-            t.id
-        );
-        assert!(
-            !file.hub_metadata_verified,
-            "{}: metadata was not verified against the hub",
-            t.id
-        );
         assert_eq!(file.hub_filename, "tokenizer.json");
         assert!(file.repo_id.contains('/'), "{}", t.id);
         assert!(tessera_tokenbench::corpus::safe_relative(&file.local_path));
+        match (file.sha256.as_deref(), file.revision.as_deref()) {
+            (Some(sha), Some(rev)) => {
+                assert_eq!(sha.len(), 64, "{} sha256 length", t.id);
+                assert!(rev.chars().all(|c| c.is_ascii_hexdigit()), "{} revision", t.id);
+                assert!(
+                    file.hub_metadata_verified,
+                    "{}: pinned entries must verify hub metadata",
+                    t.id
+                );
+                pinned += 1;
+            }
+            (None, None) => {
+                assert!(
+                    !file.hub_metadata_verified,
+                    "{}: unpinned entries must not claim hub verification",
+                    t.id
+                );
+                unpinned += 1;
+            }
+            _ => panic!("{}: sha256 and revision must be set together", t.id),
+        }
     }
+    // Four public HF vocabularies are pinned; Llama stays gated/unpinned until license acceptance.
+    assert_eq!(pinned, 4, "expected four pinned HF tokenizers");
+    assert_eq!(unpinned, 1, "Llama remains unpinned");
 }
 
 #[test]

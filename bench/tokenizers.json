@@ -6,7 +6,10 @@
       "family": "gpt2-r50k",
       "vendor": "OpenAI",
       "loader": "tiktoken-embedded",
-      "embedded": {"crate": "tiktoken-rs", "encoding": "r50k_base"},
+      "embedded": {
+        "crate": "tiktoken-rs",
+        "encoding": "r50k_base"
+      },
       "file": null,
       "notes": "GPT-2/GPT-3 base vocabulary (~50k). Old vocabulary: no dedicated whitespace-run tokens, so indented code is expensive."
     },
@@ -15,7 +18,10 @@
       "family": "codex-p50k",
       "vendor": "OpenAI",
       "loader": "tiktoken-embedded",
-      "embedded": {"crate": "tiktoken-rs", "encoding": "p50k_base"},
+      "embedded": {
+        "crate": "tiktoken-rs",
+        "encoding": "p50k_base"
+      },
       "file": null,
       "notes": "Codex-era vocabulary: r50k plus whitespace-run tokens."
     },
@@ -24,7 +30,10 @@
       "family": "gpt4-cl100k",
       "vendor": "OpenAI",
       "loader": "tiktoken-embedded",
-      "embedded": {"crate": "tiktoken-rs", "encoding": "cl100k_base"},
+      "embedded": {
+        "crate": "tiktoken-rs",
+        "encoding": "cl100k_base"
+      },
       "file": null,
       "notes": "GPT-3.5/GPT-4 vocabulary (~100k)."
     },
@@ -33,7 +42,10 @@
       "family": "gpt4o-o200k",
       "vendor": "OpenAI",
       "loader": "tiktoken-embedded",
-      "embedded": {"crate": "tiktoken-rs", "encoding": "o200k_base"},
+      "embedded": {
+        "crate": "tiktoken-rs",
+        "encoding": "o200k_base"
+      },
       "file": null,
       "notes": "GPT-4o/GPT-4.1/GPT-5 vocabulary (~200k)."
     },
@@ -47,13 +59,13 @@
         "repo_id": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
         "hub_filename": "tokenizer.json",
         "local_path": "qwen3-coder/tokenizer.json",
-        "sha256": null,
-        "revision": null,
-        "approx_size_mb": 11.0,
-        "hub_metadata_verified": false,
+        "sha256": "19564a48c4f71a2a1b937cce34c737a1e662b171c5f5d7edf641a15cd896f07d",
+        "revision": "b2cff646eb4bb1d68355c01b18ae02e7cf42d120",
+        "approx_size_mb": 6.7,
+        "hub_metadata_verified": true,
         "license_note": "Believed Apache-2.0; confirm on the model card before downloading."
       },
-      "notes": "Code-specialized Qwen3 tokenizer. Not downloaded: awaiting user approval; sha256 and revision are pinned at download time."
+      "notes": "Code-specialized Qwen3 tokenizer. Pinned revision b2cff646eb4b\u2026; artifact fetched offline into bench/tokenizers (not committed)."
     },
     {
       "id": "meta/llama-3.1",
@@ -83,13 +95,13 @@
         "repo_id": "deepseek-ai/DeepSeek-Coder-V2-Lite-Base",
         "hub_filename": "tokenizer.json",
         "local_path": "deepseek-coder-v2/tokenizer.json",
-        "sha256": null,
-        "revision": null,
-        "approx_size_mb": 4.6,
-        "hub_metadata_verified": false,
+        "sha256": "091b9dadb9845f0e8386c38bdb87e98db8adc7b0aacf36cb9257c00d0a668714",
+        "revision": "ea9b066cee82f82906fdd58898cb3788b1c5d770",
+        "approx_size_mb": 4.4,
+        "hub_metadata_verified": true,
         "license_note": "Custom DeepSeek model license; read its terms before downloading."
       },
-      "notes": "DeepSeek code-model tokenizer. Not downloaded: awaiting user approval; issue #1 makes this one conditional on licensing/tooling."
+      "notes": "DeepSeek code-model tokenizer. Pinned revision ea9b066cee82\u2026; artifact fetched offline into bench/tokenizers (not committed)."
     },
     {
       "id": "bigcode/starcoder2",
@@ -101,13 +113,13 @@
         "repo_id": "bigcode/starcoder2-3b",
         "hub_filename": "tokenizer.json",
         "local_path": "starcoder2/tokenizer.json",
-        "sha256": null,
-        "revision": null,
+        "sha256": "6190a6649d90a7fe35bfed8bff990c3e7aafc3cfa5beea185045f03f0890402b",
+        "revision": "733247c55e3f73af49ce8e9c7949bf14af205928",
         "approx_size_mb": 2.0,
-        "hub_metadata_verified": false,
+        "hub_metadata_verified": true,
         "license_note": "BigCode OpenRAIL-M model license; confirm on the model card before downloading."
       },
-      "notes": "Code-specific tokenizer trained on source code (~49k). Not downloaded: awaiting user approval."
+      "notes": "Code-specific tokenizer trained on source code (~49k). Pinned revision 733247c55e3f\u2026; artifact fetched offline into bench/tokenizers (not committed)."
     },
     {
       "id": "mistral/mistral-7b-v0.3",
@@ -119,13 +131,13 @@
         "repo_id": "mistralai/Mistral-7B-v0.3",
         "hub_filename": "tokenizer.json",
         "local_path": "mistral-7b-v0.3/tokenizer.json",
-        "sha256": null,
-        "revision": null,
-        "approx_size_mb": 3.0,
-        "hub_metadata_verified": false,
+        "sha256": "e553af6fff7d7ad76e830608b218c5c0b0822998d5a1a96099a74cd3c1cb1a49",
+        "revision": "caa1feb0e54d415e2df31207e5f4e273e33509b1",
+        "approx_size_mb": 1.9,
+        "hub_metadata_verified": true,
         "license_note": "Believed Apache-2.0 (the hub repository may be gated); confirm before downloading."
       },
-      "notes": "Optional (docs/research/token-efficiency.md lists Mistral-family). Not downloaded: awaiting user approval."
+      "notes": "Optional (docs/research/token-efficiency.md lists Mistral-family). Pinned revision caa1feb0e54d\u2026; artifact fetched offline into bench/tokenizers (not committed)."
     }
   ]
 }
