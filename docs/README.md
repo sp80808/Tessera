@@ -36,6 +36,7 @@ A research result must not silently become language semantics.
 - [Benchmark methodology](research/benchmarks.md)
 - [Evidence ledger](research/references.md)
 - [Research pass 2](research/2026-09-29-pass2.md)
+- [Research pass 3: LLM repair](research/2026-10-04-llm-repair.md)
 
 ## Provisional specification
 
