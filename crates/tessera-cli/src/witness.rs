@@ -25,6 +25,7 @@ use tessera_syntax::lexer;
 use tessera_tir::{ModuleProvenance, TirModule};
 
 use crate::advice;
+use crate::diagnostics;
 use crate::line_col;
 use crate::pipeline::{self, Input};
 
@@ -113,14 +114,6 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
-fn severity(s: Severity) -> &'static str {
-    match s {
-        Severity::Error => "error",
-        Severity::Warning => "warning",
-        Severity::Note => "note",
-    }
-}
-
 /// The two OpenAI vocabularies embedded in `tiktoken-rs`: real tokenizer
 /// counts, not estimates. They measure cost under those vocabularies only.
 fn tokenizer_counts(text: &str) -> Json {
@@ -137,14 +130,6 @@ fn representation(text: &str, tessera_tokens: Option<usize>) -> Json {
         "bytes": text.len(),
         "tessera_tokens": tessera_tokens,
         "tokenizers": tokenizer_counts(text),
-    })
-}
-
-fn fix_json(f: &advice::Fix) -> Json {
-    json!({
-        "span": { "start": f.start, "end": f.end },
-        "replacement": f.replacement,
-        "label": f.label,
     })
 }
 
@@ -175,48 +160,18 @@ impl<'a> Run<'a> {
     }
 
     fn diagnostic(&mut self, d: &Diagnostic) {
-        let span = d.at.primary_span();
-        let (line, col) = line_col(self.text, span.start as usize);
-        self.diagnostics.push(json!({
-            "phase": d.phase.name(),
-            "severity": severity(d.severity),
-            "code": d.code,
-            "message": d.message,
-            "span": { "start": span.start, "end": span.end },
-            "line": line,
-            "col": col,
-            "help": null,
-            "fixes": [],
-        }));
+        self.diagnostics
+            .push(diagnostics::to_json(&diagnostics::plain(self.text, d)));
     }
 
     /// `help`/`fixes` on each diagnostic of rejected TC, an
     /// `E-syntax-foreign` diagnostic first when the source reads as another
-    /// language, and the whole-file `suggestions` that pass `check`.
-    fn advise_tc(&mut self, diagnostics: &DiagnosticSet) {
-        let report = advice::report(self.text, diagnostics);
-        for (a, json) in report.advice.iter().zip(self.diagnostics.iter_mut()) {
-            json["help"] = a.help.clone().map_or(Json::Null, Json::String);
-            json["fixes"] = Json::Array(a.fixes.iter().map(fix_json).collect());
-        }
-        if let Some((start, end, message)) = &report.foreign {
-            let (line, col) = line_col(self.text, *start);
-            self.diagnostics.insert(
-                0,
-                json!({
-                    "phase": Phase::Syntax.name(),
-                    "severity": "error",
-                    "code": advice::FOREIGN_CODE,
-                    "message": message,
-                    "span": { "start": start, "end": end },
-                    "line": line,
-                    "col": col,
-                    "help": format!("a TC program is one function: `{}`", advice::TEMPLATE),
-                    "fixes": [],
-                }),
-            );
-        }
-        self.suggestions = advice::suggestions(self.text, &report.advice);
+    /// language, and the whole-file `suggestions` that pass `check`. Replaces
+    /// the plain records [`Self::phases_ran`] pushed for the same set.
+    fn advise_tc(&mut self, set: &DiagnosticSet) {
+        let (records, suggestions) = diagnostics::advised(self.text, set);
+        self.diagnostics = records.iter().map(diagnostics::to_json).collect();
+        self.suggestions = suggestions;
     }
 
     /// Record `phases` as run against `diagnostics`; true when none of them
