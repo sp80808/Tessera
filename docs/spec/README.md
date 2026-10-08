@@ -8,6 +8,7 @@ These documents define **candidate contracts**, not stable language behavior.
 - [Tessera Model Transport](model-transport.md)
 - [Tessera Capability Graph](ownership-capability-graph.md)
 - [`tsr witness` evidence (`tessera.witness/v0`)](witness.md)
+- [`tsr check` diagnostics (`tessera.diagnostics/v0`)](diagnostics.md)
 
 ## Missing specs intentionally blocked on experiments
 

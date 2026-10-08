@@ -364,3 +364,40 @@ fn grammar_prints_each_format() {
     assert_eq!(tsr(&["grammar", "--format=peg"]).0, 2);
     assert_eq!(tsr(&["grammar", "ebnf"]).0, 2);
 }
+
+/// `--diagnostic=dense|json` render the same records as the human form.
+#[test]
+fn check_renders_dense_and_json_diagnostics() {
+    let file = "examples/witness/semantic_error.tes";
+    let (code, out, err) = tsr(&["check", "--diagnostic=dense", file]);
+    assert_eq!((code, out.as_str()), (1, ""));
+    assert_eq!(
+        err,
+        "1:20 E-resolve-unbound-name unbound variable `b` (not a parameter of `add`); \
+         help: `b` is not a parameter; did you mean `a`? (parameters: a)\n\
+         = f add(a:i64)>i64=a+a\n"
+    );
+
+    let (code, out, err) = tsr(&["check", file, "--diagnostic=json"]);
+    assert_eq!((code, err.as_str()), (1, ""));
+    let doc: serde_json::Value = serde_json::from_str(&out).expect("json document");
+    assert_eq!(doc["schema"], "tessera.diagnostics/v0");
+    assert_eq!(doc["ok"], false);
+    assert_eq!(doc["diagnostics"][0]["code"], "E-resolve-unbound-name");
+    assert_eq!(doc["diagnostics"][0]["line"], 1);
+    assert_eq!(doc["suggestions"][0]["source"], "f add(a:i64)>i64=a+a\n");
+
+    // The JSON record is the witness diagnostic, field for field.
+    let (_, witness) = witness(&[file]);
+    assert_eq!(doc["diagnostics"], witness["diagnostics"]);
+
+    let (code, out, err) = tsr(&["check", "--diagnostic=json", BOOTSTRAP]);
+    assert_eq!((code, err.as_str()), (0, ""));
+    let doc: serde_json::Value = serde_json::from_str(&out).expect("json document");
+    assert_eq!(doc["ok"], true);
+    assert_eq!(doc["diagnostics"], serde_json::json!([]));
+
+    let (code, _, err) = tsr(&["check", "--diagnostic=prose", BOOTSTRAP]);
+    assert_eq!(code, 2);
+    assert!(err.contains("unknown diagnostic format"), "{err}");
+}
