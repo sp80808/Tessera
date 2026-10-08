@@ -79,3 +79,7 @@ See [ROADMAP.md](ROADMAP.md) for the current sequence: token/syntax laboratory â
 Research/bootstrap stage. Syntax examples in the docs are **provisional experiments**, not a stable language specification.
 
 The next milestone is to build the tokenizer benchmark and grammar experiment harness before freezing v0 syntax.
+
+## Tokenizer / grammar gate
+
+Syntax promotion is gated by `tess-tokenbench`. See [`docs/grammar-promotion.md`](docs/grammar-promotion.md) and [`bench/README.md`](bench/README.md).
