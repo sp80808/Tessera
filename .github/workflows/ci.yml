@@ -18,3 +18,18 @@ jobs:
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
       - run: cargo test --workspace
+
+  tokenbench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Fetch pinned HF tokenizer artifacts
+        run: ./scripts/fetch-tokenizers.sh
+      - name: Build tess-tokenbench
+        run: cargo build -p tessera-tokenbench --release
+      - name: Run corpus benchmark
+        run: ./target/release/tess-tokenbench run --out-json bench/results/ci.json --out-md bench/results/ci.md
+      - name: Regression gate vs committed baseline
+        run: ./target/release/tess-tokenbench check --baseline bench/results/baseline-portfolio.json --results bench/results/ci.json
+
