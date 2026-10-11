@@ -25,6 +25,7 @@ pub use tessera_tir::TirType;
 pub mod ast;
 pub mod cst;
 pub mod lexer;
+pub mod prefix;
 
 #[cfg(test)]
 mod legacy;
