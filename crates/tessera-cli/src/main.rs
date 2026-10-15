@@ -1,10 +1,11 @@
 use std::{env, ffi::OsString, fs, process::ExitCode};
 
 use tessera_db::{Database, SourceFile, byte_len, line_count, source_units};
-use tessera_phases::{DiagnosticSet, Severity};
+use tessera_phases::DiagnosticSet;
 use tessera_syntax::{fmt, lexer};
 
 mod advice;
+mod diagnostics;
 mod grammar;
 mod pipeline;
 mod witness;
@@ -15,7 +16,8 @@ fn usage() -> ExitCode {
     eprintln!(
         "usage: tsr <file.tes> | tsr fmt <file.tes> | tsr tir <file.tes>\n       \
          tsr tokens <file.tes>   (scaffold: lossless token dump)\n       \
-         tsr check <file.tes>    (syntax, name and type diagnostics, all at once)\n       \
+         tsr check [--diagnostic=human|dense|json] <file.tes>\n       \
+         \x20        (syntax, name and type diagnostics, all at once)\n       \
          tsr witness [--phase=check|mir|backend] [--overflow=wrapping|trapping] <file>\n       \
          \x20        (one run as tessera.witness/v0 JSON evidence on stdout; exit 0 pass,\n       \
          \x20         1 fail, 3 unsupported phase, 4 tool error)\n       \
@@ -65,22 +67,13 @@ fn line_col(text: &str, offset: usize) -> (usize, usize) {
     (line, col)
 }
 
+/// `diagnostics` in the human form, without advice.
 fn render(path: &str, text: &str, diagnostics: &DiagnosticSet) -> String {
-    let mut out = String::new();
-    for d in diagnostics.iter() {
-        let span = d.at.primary_span();
-        let (line, col) = line_col(text, span.start as usize);
-        let sev = match d.severity {
-            Severity::Error => "error",
-            Severity::Warning => "warning",
-            Severity::Note => "note",
-        };
-        out.push_str(&format!(
-            "{path}:{line}:{col}: {sev}[{}]: {}\n",
-            d.code, d.message
-        ));
-    }
-    out
+    let records: Vec<_> = diagnostics
+        .iter()
+        .map(|d| diagnostics::plain(text, d))
+        .collect();
+    diagnostics::human(path, &records, &[])
 }
 
 fn run_tokens(text: &str) -> ExitCode {
@@ -88,47 +81,36 @@ fn run_tokens(text: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-/// `render`, with the foreign-syntax summary first and each diagnostic's
-/// `help` line from [`advice`].
-fn render_with_help(path: &str, text: &str, diagnostics: &DiagnosticSet) -> String {
-    let report = advice::report(text, diagnostics);
-    let mut out = String::new();
-    if let Some((start, _, message)) = &report.foreign {
-        let (line, col) = line_col(text, *start);
-        out.push_str(&format!(
-            "{path}:{line}:{col}: error[{}]: {message}\n  help: a TC program is one function: `{}`\n",
-            advice::FOREIGN_CODE,
-            advice::TEMPLATE
-        ));
-    }
-    let rendered = render(path, text, diagnostics);
-    for (line, advice) in rendered.lines().zip(&report.advice) {
-        out.push_str(line);
-        out.push('\n');
-        if let Some(help) = &advice.help {
-            out.push_str(&format!("  help: {help}\n"));
-        }
-    }
-    out
-}
-
-fn run_check(text: &str, path: &std::ffi::OsStr) -> ExitCode {
+/// `tsr check [--diagnostic=human|dense|json]`: one set of records, rendered
+/// in the chosen form. Human and dense go to stderr; JSON is the document on
+/// stdout. Exit 1 when there are errors.
+fn run_check(text: &str, path: &std::ffi::OsStr, format: diagnostics::Format) -> ExitCode {
     let out = pipeline::check_tc(text);
-    eprint!(
-        "{}",
-        render_with_help(&path.to_string_lossy(), text, &out.diagnostics)
-    );
-    if out.diagnostics.has_errors() {
-        let report = advice::report(text, &out.diagnostics);
-        for s in advice::suggestions(text, &report.advice) {
-            eprint!("  suggestion ({}; passes check): {}", s.label, s.source);
+    let path = path.to_string_lossy();
+    let (records, suggestions) = diagnostics::advised(text, &out.diagnostics);
+    match format {
+        diagnostics::Format::Human => {
+            eprint!("{}", diagnostics::human(&path, &records, &suggestions))
+        }
+        diagnostics::Format::Dense => eprint!("{}", diagnostics::dense(&records, &suggestions)),
+        diagnostics::Format::Json => {
+            let doc = diagnostics::document(&path, &records, &suggestions);
+            match serde_json::to_string_pretty(&doc) {
+                Ok(json) => println!("{json}"),
+                Err(error) => {
+                    eprintln!("tsr: failed to serialize diagnostics: {error}");
+                    return ExitCode::from(1);
+                }
+            }
         }
     }
     if out.diagnostics.has_errors() {
         ExitCode::from(1)
     } else {
-        let n = out.value.module.funcs.len();
-        println!("ok: {n} function(s) checked (syntax, names, types)");
+        if format != diagnostics::Format::Json {
+            let n = out.value.module.funcs.len();
+            println!("ok: {n} function(s) checked (syntax, names, types)");
+        }
         ExitCode::SUCCESS
     }
 }
@@ -332,7 +314,32 @@ fn main() -> ExitCode {
         let command = first.to_string_lossy().into_owned();
         return run_lowering(&command, args.collect());
     }
-    if first == "fmt" || first == "tir" || first == "tokens" || first == "check" {
+    if first == "check" {
+        let mut format = diagnostics::Format::Human;
+        let mut path = None;
+        for arg in args {
+            let text = arg.to_string_lossy().into_owned();
+            if let Some(name) = text.strip_prefix("--diagnostic=") {
+                let Some(f) = diagnostics::Format::parse(name) else {
+                    eprintln!(
+                        "tsr: unknown diagnostic format `{name}` (expected human, dense or json)"
+                    );
+                    return ExitCode::from(2);
+                };
+                format = f;
+            } else if path.replace(arg).is_some() {
+                return usage();
+            }
+        }
+        let Some(path) = path else {
+            return usage();
+        };
+        return match read_source(&path) {
+            Ok(text) => run_check(&text, &path, format),
+            Err(code) => code,
+        };
+    }
+    if first == "fmt" || first == "tir" || first == "tokens" {
         let Some(path) = args.next() else {
             return usage();
         };
@@ -345,7 +352,6 @@ fn main() -> ExitCode {
         };
         return match first.to_str() {
             Some("tokens") => run_tokens(&text),
-            Some("check") => run_check(&text, &path),
             Some("tir") => run_tir(&text, &path),
             _ => run_fmt(&text),
         };
